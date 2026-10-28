@@ -6,7 +6,7 @@ Code, raw results, Snowflake logs and the pre-registration for the paper
 A shared warehouse is billed per second while it runs, including idle tails after each query. The paper models the bill
 as a cost-sharing game, shows that when the auto-suspend timeout is at least 60 s the Shapley split is exact in one sweep
 (each billed second divided equally among the teams keeping the warehouse up), and compares it with common chargeback
-rules on 95 Redshift instances from Redset replayed under per-second billing, and on a live Snowflake warehouse.
+rules on 94 shared Redshift instances from Redset replayed under per-second billing, and on a live Snowflake warehouse.
 
 ## What is here
 

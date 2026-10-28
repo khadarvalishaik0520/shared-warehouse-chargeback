@@ -57,6 +57,11 @@ times. The saving creates a new problem. The cloud provider sends one invoice pe
 it must decide how much each consuming team pays. In practice this \emph{chargeback} (or, when no money moves,
 \emph{showback}) drives budgets, prompts disputes, and shapes behaviour: teams that believe they are overcharged ask for a
 private warehouse, which costs the organisation more, and teams that believe they ride free have no reason to change.
+In the author's experience operating a shared Snowflake platform for many engineering teams, chargeback disputes follow
+a pattern. A team issuing short scheduled queries is charged little under execution-time attribution yet keeps the
+warehouse awake all day. A team with long batch jobs pays most under proportional splitting and asks for a private
+warehouse. Each new tenant changes everyone else's charge. Finance wants a split that adds up to the invoice and that
+teams accept as fair.
 
 Cloud data warehouses now expose per-query cost attribution. Snowflake's
 \texttt{QUERY\_\allowbreak ATTRIBUTION\_\allowbreak HISTORY}, for example, assigns warehouse credits to queries in
@@ -447,7 +452,8 @@ pays a median 2.6--3.2 times its standalone cost. Marginal splitting's overcharg
 
 The live run shows the same failures with real metering. At 60\,s proportional splitting charged the dashboard team 0.543
 credits against a standalone cost of 0.383, and the batch team 0.143 against 0.094; at 300\,s marginal splitting charged the
-ad hoc team 0.790 against 0.768. Shapley charged every team less than its standalone cost in both phases (Table~\ref{tab:live}).
+ad hoc team 0.790 against 0.768. Shapley charged every team less than its standalone cost in both phases (Table~\ref{tab:live}). The pre-registered criterion for a primary claim---it must hold on Redset and match in direction on the Snowflake
+run---is met for both: the common rules exceed standalone costs in both, and Shapley stays within them in both.
 
 \begin{table}[t]
 \caption{Live run: per-team charges (credits), scaled to the metered invoice. Alone: standalone cost; bold: above it.}\label{tab:live}

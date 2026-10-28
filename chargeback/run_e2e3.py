@@ -1,6 +1,8 @@
 """E2 + E3 runner (pre-registered in PLAN.md). One row per (instance, calendar month, AUTO_SUSPEND).
 Writes results/e2e3.jsonl; re-runnable (skips finished instance/auto pairs). Python 3.9 compatible.
-Usage: python3 run_e2e3.py <redset_iv dir> <results dir> [max_instances]"""
+Usage: python3 run_e2e3.py <redset_iv dir> <results dir> [max_instances] [--no-compile]
+--no-compile: the pre-registered sensitivity (frozen definitions) with compile time removed from each interval;
+writes results/e2e3_nocompile.jsonl, main settings 60/300/600 s only."""
 import sys, os, json, time, datetime, duckdb
 from itertools import combinations
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, ".."))
@@ -18,8 +20,12 @@ def coalitions(teams):
         for t in teams: yield (t,); yield tuple(u for u in teams if u != t)
         for S in combinations(teams, 2): yield S
 
+NC = "--no-compile" in sys.argv
+E = "e - compile_s" if NC else "e"                       # interval end, with or without compile time
+if NC: AUTOS = (60, 300, 600)
+
 def main(d, res, cap):
-    os.makedirs(res, exist_ok=True); outp = os.path.join(res, "e2e3.jsonl")
+    os.makedirs(res, exist_ok=True); outp = os.path.join(res, "e2e3_nocompile.jsonl" if NC else "e2e3.jsonl")
     done = set()
     if os.path.exists(outp):
         for l in open(outp): r = json.loads(l); done.add((r["key"], r["auto"]))
@@ -28,14 +34,14 @@ def main(d, res, cap):
     con = duckdb.connect(); out = open(outp, "a")
     for r in elig:
         f = os.path.join(d, r["key"].replace("/", "_") + ".parquet")
-        sh = dict(con.execute(f"select team, sum(e-s) from '{f}' group by team").fetchall())
+        sh = dict(con.execute(f"select team, sum({E} - s) from '{f}' group by team").fetchall())
         tot = sum(sh.values()) or 1.0
         keep = {t for t, x in sh.items() if x / tot >= 0.01}          # frozen rule: teams with >= 1% share
         months = [m for (m,) in con.execute(f"select distinct strftime(to_timestamp(s), '%Y-%m') m from '{f}' order by 1").fetchall()]
         bymonth = {}
         for m in months:
             T = {}
-            for t, s, e in con.execute(f"select team, s, e from '{f}' where strftime(to_timestamp(s), '%Y-%m') = ? order by s", [m]).fetchall():
+            for t, s, e in con.execute(f"select team, s, {E} from '{f}' where strftime(to_timestamp(s), '%Y-%m') = ? order by s", [m]).fetchall():
                 T.setdefault(t if t in keep else "other", []).append((s, e))
             bymonth[m] = T
         for auto in AUTOS:
@@ -62,4 +68,5 @@ def main(d, res, cap):
     print("E2E3 DONE")
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 10**9)
+    av = [x for x in sys.argv[1:] if not x.startswith("--")]
+    main(av[0], av[1], int(av[2]) if len(av) > 2 else 10**9)

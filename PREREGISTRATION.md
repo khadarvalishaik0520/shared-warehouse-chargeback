@@ -1,8 +1,9 @@
 # Pre-registration and deviation log
 
 This file is the study plan as written during the work; each addendum and deviation is dated when it was written
-(US Eastern time). The timestamps are the author's own and are mirrored in this repository's git history; they were not
-lodged with an external registry. The file is reproduced verbatim except for 4 short phrases that named a separate study
+(US Eastern time). The timestamps are the author's own and were not lodged with an external registry. The repository
+was published after the study, so its history starts at publication. Paths were renamed at publication: sigmod27_chargeback/ is chargeback/, and verify/*.py is analysis/*.py
+(verify/test_sql2.py is tests/test_sql.py). The file is reproduced verbatim except for 4 short phrases that named a separate study
 by the author; those are replaced by text in [square brackets]. The Schedule section is as originally planned; the work ran
 ahead of it and was done by a single author. Experiment ids: E1 billing validation on Snowflake, E2 unassigned share,
 E3 fairness of the rules, E4b/E5 bystander tests (a team doubles / adds isolated queries), E6 the chargeback SQL inside
@@ -173,3 +174,13 @@ Out of scope here (belongs to [a separate study]): whether teams should share, w
   600 s: R5 3.1 / 4.0 / 4.6%; R2 15.4 / 16.2 / 16.8; R3 29.1 / 29.2 / 29.4; R4 8.8 / 10.0 / 11.8.
 - R5 excess at 10%: median 2.1% (60 s) / 0.4% (600 s), p90 8.1 / 3.6%. ~2/3 of violators had <1% slack at observed timing.
 - Stated expectation ("R5 at or near 0 at 10%") was wrong; the paper says so.
+
+## Addendum 6 (2026-10-27 21:25 ET, before it is run) — the pre-registered no-compile sensitivity, not run until now
+- The frozen definitions list "Sensitivity: without compile"; it was never run and the paper did not report it (found in
+  an external review of the plan against the paper). Run now exactly as defined: interval end = arrival + queue +
+  execution (compile_s subtracted); everything else unchanged (eligibility, 1% team rule recomputed on the shorter
+  intervals, months, rules). Settings 60/300/600 s. run_e2e3.py --no-compile -> results/e2e3_nocompile.jsonl;
+  analysis/nocompile.py prints main vs no-compile side by side.
+- Expectation: the unassigned share rises slightly (less attributed time); the ordering of the rules and Shapley's zero
+  standalone violations are unchanged (the theorem does not depend on how intervals are measured). Reported either way,
+  in one sentence in the sensitivity section.
