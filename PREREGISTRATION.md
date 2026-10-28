@@ -184,3 +184,11 @@ Out of scope here (belongs to [a separate study]): whether teams should share, w
 - Expectation: the unassigned share rises slightly (less attributed time); the ordering of the rules and Shapley's zero
   standalone violations are unchanged (the theorem does not depend on how intervals are measured). Reported either way,
   in one sentence in the sensitivity section.
+- Addendum 6 pushed to this repository in commit 2909287 (2026-10-27 21:28 ET), before the no-compile run started.
+
+## No-compile sensitivity result (2026-10-28 05:44 ET) — expectation met
+- 94 instances at each setting (stub month dropped). Main / no compile, 60 / 300 / 600 s:
+  unassigned median 31.4/46.6, 50.2/61.3, 56.3/65.9%; team-months over standalone R2 16.6/17.7, 14.7/15.5, 12.4/13.7%;
+  R3 44.1/46.8, 36.6/38.1, 33.4/34.1%; R4 4.3/4.5, 3.5/3.2, 3.0/2.8%; R5 0 in all; R5 coalition violations 0 of 24,692.
+- The unassigned share rises (compile time leaves the attributed time but stays in the bill); the rules' ordering and
+  Shapley's zero violations are unchanged. Script: analysis/nocompile.py.

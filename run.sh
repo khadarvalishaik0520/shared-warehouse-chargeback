@@ -9,6 +9,7 @@ case "${1:-}" in
     python3 analysis/verify_sigmod.py chargeback/results --drop-feb
     python3 analysis/explore_sigmod.py
     python3 analysis/e5_e7.py chargeback/results
+    python3 analysis/nocompile.py chargeback/results
     python3 analysis/sampled_accuracy.py
     python3 analysis/bench_engine.py
     python3 sf/validate_billing.py sf/truth sf/runs/e1_1792522545.jsonl CB_SHARED auto

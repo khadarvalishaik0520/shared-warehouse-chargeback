@@ -619,6 +619,12 @@ Sweep, rescaled & 5.01 & 17.68 & 28.41 \\
 1.1, the doubling-test rates for marginal splitting to 40.0\% and 28.4\%, and the isolated-query rates to 64.3\% and 37.3\%
 (proportional) and 47.8\% and 24.4\% (marginal); Shapley still has zero violations of any kind.
 
+\textbf{Without compile time.} The frozen definitions list one more sensitivity: query intervals without compile time.
+It was not run until review found it missing; it was then added to the plan before it ran (Addendum~6). Removing
+compile time raises the unassigned median to 47\%, 61\% and 66\% at 60, 300 and 600\,s, because compile time leaves the
+attributed time but not the bill. The overcharge rates move by at most 2.7 points (proportional 14--18\%, equal
+34--47\%, marginal 3--5\% of team-months), and Shapley again has zero violations in 24,692 coalition checks per setting.
+
 \textbf{What if teams would run faster alone?} Assumption A1 keeps every query's timing when other teams are removed. With
 less contention a team alone might run faster, which lowers its standalone cost. A pre-registered run (Addendum~5) shortened
 every query of each named team by 10, 20 and 30\% when computing its standalone cost, while keeping the charges computed at
