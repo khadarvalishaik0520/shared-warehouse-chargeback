@@ -5,7 +5,7 @@ This file is the study plan as written during the work; each addendum and deviat
 was published after the study, so its history starts at publication. Paths were renamed at publication: sigmod27_chargeback/ is chargeback/, and verify/*.py is analysis/*.py
 (verify/test_sql2.py is tests/test_sql.py). The file is reproduced verbatim except for 4 short phrases that named a separate study
 by the author; those are replaced by text in [square brackets]. The Schedule section is as originally planned; the work ran
-ahead of it and was done by a single author. Experiment ids: E1 billing validation on Snowflake, E2 unassigned share,
+ahead of it. Experiment ids: E1 billing validation on Snowflake, E2 unassigned share,
 E3 fairness of the rules, E4b/E5 bystander tests (a team doubles / adds isolated queries), E6 the chargeback SQL inside
 Snowflake, E7 sensitivity to assumption A1. The first E2/E3 run had an engine bug (Deviation 1); its output is not
 reported and the re-run is.

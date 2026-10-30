@@ -21,8 +21,17 @@
 
 % AUTHOR LIST IS FROZEN AT SUBMISSION (SIGMOD industrial rules) -- confirm names, order, affiliations before Nov 24.
 \author{Khadarvali Shaik}
-\affiliation{\institution{[Affiliation -- non-academic]}\city{Richmond}\state{VA}\country{USA}}
+\orcid{0009-0006-4117-4973}
+\affiliation{\institution{Independent Researcher}\city{Richmond}\state{VA}\country{USA}}
 \email{khadarvali.shaik@ieee.org}
+\author{Syam Sajit Dondapati}
+\orcid{0009-0004-0576-7152}
+\affiliation{\institution{American International Group}\city{New York}\state{NY}\country{USA}}
+\email{dsyam22@gmail.com}
+\author{Abdul Rasheed Shaik}
+\orcid{0009-0009-8929-2460}
+\affiliation{\institution{Independent Researcher}\city{Richmond}\state{VA}\country{USA}}
+\email{abdulrasheed.shaik@ieee.org}
 
 \begin{abstract}
 When several teams share one cloud data warehouse, someone has to turn a single invoice into per-team charges. Warehouses
@@ -57,7 +66,7 @@ times. The saving creates a new problem. The cloud provider sends one invoice pe
 it must decide how much each consuming team pays. In practice this \emph{chargeback} (or, when no money moves,
 \emph{showback}) drives budgets, prompts disputes, and shapes behaviour: teams that believe they are overcharged ask for a
 private warehouse, which costs the organisation more, and teams that believe they ride free have no reason to change.
-In the author's experience operating a shared Snowflake platform for many engineering teams, chargeback disputes follow
+In the first author's experience operating a shared Snowflake platform for many engineering teams, chargeback disputes follow
 a pattern. A team issuing short scheduled queries is charged little under execution-time attribution yet keeps the
 warehouse awake all day. A team with long batch jobs pays most under proportional splitting and asks for a private
 warehouse. Each new tenant changes everyone else's charge. Finance wants a split that adds up to the invoice and that
@@ -714,8 +723,8 @@ standalone cost, never charged a bystander for someone else's growth, and reconc
 
 \begin{acks}
 AI-generated content: Claude (Anthropic) was used to draft and edit the text (all sections), to write the engine, analysis
-code and SQL listing (Sections~\ref{sec:impl}--\ref{sec:sens}), and to produce the figures and tables. The author directed the study and ran the
-experiments; every reported number was re-computed from the result files, and the author takes full responsibility for
+code and SQL listing (Sections~\ref{sec:impl}--\ref{sec:sens}), and to produce the figures and tables. The authors directed the study and the first author ran the
+experiments; every reported number was re-computed from the result files, and the authors take full responsibility for
 the content.
 \end{acks}
 
