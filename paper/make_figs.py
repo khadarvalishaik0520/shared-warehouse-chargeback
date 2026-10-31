@@ -6,7 +6,7 @@ sys.path.insert(0, __import__("os").path.abspath(__import__("os").path.join(__im
 import os
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 U = os.path.join(ROOT, "chargeback", "results") + "/"
-plt.rcParams.update({"font.size": 8, "font.family": "serif", "axes.spines.top": False, "axes.spines.right": False,
+plt.rcParams.update({"pdf.fonttype": 42, "ps.fonttype": 42, "font.size": 8, "font.family": "serif", "axes.spines.top": False, "axes.spines.right": False,
                      "figure.dpi": 200, "savefig.bbox": "tight", "savefig.pad_inches": 0.02})
 INK, MUTED, C = "#222222", "#888888", ["#2f6db3", "#d9822b", "#3a9e5b", "#b0413e", "#7a5aa6"]
 R = [r for r in map(json.loads, open(U + "e2e3.jsonl")) if r["month"] != "2024-02"]  # Deviation 2: drop 5-hour stub month
