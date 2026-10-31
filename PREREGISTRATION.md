@@ -2,193 +2,267 @@
 
 This file is the study plan as written during the work; each addendum and deviation is dated when it was written
 (US Eastern time). The timestamps are the author's own and were not lodged with an external registry. The repository
-was published after the study, so its history starts at publication. Paths were renamed at publication: sigmod27_chargeback/ is chargeback/, and verify/*.py is analysis/*.py
-(verify/test_sql2.py is tests/test_sql.py). The file is reproduced verbatim except for 4 short phrases that named a separate study
-by the author; those are replaced by text in [square brackets]. The Schedule section is as originally planned; the work ran
-ahead of it. Experiment ids: E1 billing validation on Snowflake, E2 unassigned share,
-E3 fairness of the rules, E4b/E5 bystander tests (a team doubles / adds isolated queries), E6 the chargeback SQL inside
-Snowflake, E7 sensitivity to assumption A1. The first E2/E3 run had an engine bug (Deviation 1); its output is not
-reported and the re-run is.
+was published after the study, so its history starts at publication. Addenda 7 and 8 were the exception: they were pushed here (commit acf35de) before F6 or F7 ran. The file is reproduced verbatim except for 8 short phrases that named a separate study
+by the author; those are replaced by text in [square brackets]. The plan was first written for the ICDE Industry &
+Applications track under a working title; Addendum 6 records the change to the Research track (EAB). Addendum 6 also
+maps the paper's numbered deviations (1)-(7) to the dated entries below. Experiment ids: F1 billing validation, F2/F2b
+size scaling, F3 replay, F4 features and rule, F5 sensitivity.
 
 ---
 
-# [Study plan] — Who Pays for Idle? Fair Chargeback for Shared Cloud Data Warehouses
-SIGMOD 2027 Industrial Track · due **Tue Nov 24, 2026, 11:59 PM AoE** · ACM sigconf, 12 pp + refs · author list frozen at submission
+# Paper 1 — Consolidate or Separate? A Billing-Exact Fleet Advisor for Cloud Data Warehouses
+ICDE 2027 Industry & Applications · due **Tue Dec 1, 2026, 11:59 PM Pacific** · IEEE, 6 pp (long 12) + refs · author list frozen after acceptance
 
 ## Question (and only this question)
-Given ONE shared warehouse and its invoice, how should the bill be split across the teams that use it?
-Out of scope here (belongs to [a separate study]): whether teams should share, which warehouses should exist, sizing.
+Which warehouses should exist: which workloads share, at what size, with what AUTO_SUSPEND -- minimum billed credits
+within latency targets. Out of scope here [(belongs to a separate study)]: how a shared bill is split.
 
-## Evidence (no overlap with [a separate study])
-- Main fleet evidence: **Redset** (3 months, per-user query history, 200 serverless + 200 provisioned Redshift instances).
-  Teams = user_id within an instance. Redshift's own billing differs (provisioned = node-hours; serverless = RPU-seconds),
-  so each instance is replayed as a counterfactual per-second warehouse at fixed size. State this plainly in the paper.
-- Snowflake study (own run, not reused by [a separate study]): 4 query-tagged "teams" with different arrival patterns
-  (dashboard bursts, hourly batch, ad hoc, trickle) on ONE XS warehouse, ~2 h, AUTO_SUSPEND 60 s and 300 s.
-  Ground truth: WAREHOUSE_METERING_HISTORY + QUERY_ATTRIBUTION_HISTORY.
-- Snowset: not used.
+## Evidence [(no overlap with a separate study)]
+- Main fleet evidence: **Snowset** (Snowflake, 2 weeks 2018, ~70M queries, warehouseId + warehouseSize).
+  Consolidation candidates = warehouses that touch the same databaseId (same-customer proxy; no account id in Snowset).
+  No suspend/resume events -> running periods reconstructed from query gaps under an assumed AUTO_SUSPEND (sweep 60–600 s).
+- Snowflake calibration [(own runs, not reused elsewhere)]:
+  (a) size scaling: TPCH10 query classes on XS/S/M -> runtime vs size per class;
+  (b) suspend billing: scripted gaps around AUTO_SUSPEND -> model vs metered credits.
+- Redset: not used.
 
-## Technical core (status 2026-10-19)
-- Cost game c(S) = billed seconds if only S's queries ran on the warehouse (same timing, fixed size).
-- Observation (verified on 1,600 random instances, proof to write): when AUTO_SUSPEND >= 60 s the 60 s resume minimum
-  never binds, so billed(S) = measure of the union of [start, end+auto] over S's queries -> coverage game ->
-  submodular -> Shapley is in the core and is exact in O(m log m) by a sweep (each billed second split equally
-  among the teams covering it). Sweep vs brute-force Shapley: max diff 3e-13 s; 0 core violations.
-- When AUTO_SUSPEND < 60 s the minimum binds and the sweep is off (up to ~170 s on test instances) -> need an extension.
-- Open: queueing/slowdown when teams overlap breaks "same timing"; quantify on the Snowflake run.
+## Advisor (to build)
+Input: per-warehouse query intervals + sizes. Search over (grouping of warehouses into shared ones) x size x AUTO_SUSPEND.
+Replay: runtime rescaled by the calibrated size model; queueing when concurrency exceeds the warehouse's capacity;
+billed with the shared billing core. Objective: billed credits s.t. p95 latency inflation <= target per original warehouse.
 
-## Frozen definitions (2026-10-19 23:15 ET, before any E2–E4 number was computed; only a data inventory had been run)
-- Query interval on the counterfactual warehouse: [arrival + queue, arrival + queue + compile + execution].
-  Sensitivity: without compile. Result-cache hits with zero execution are dropped; aborted queries kept.
-- Team = Redset user_id within one instance.
-- Instance inclusion: >= 2 teams that each have >= 1% of the instance's execution seconds, and >= 7 days of history.
-  Inventory at freeze time (39 of 400 instances loaded): 20 met ">= 2 teams and >= 7 days" before the 1% rule.
-  Full inventory after loading all 400 (2026-10-19 23:40, rule applied, no results computed): 95 eligible instances
-  (76 provisioned, 19 serverless); teams per instance with >= 1% share: 2:30, 3:17, 4:12, 5:12, 6:9, 7:4, 8:6, 9:2, 10+:3.
-- Billing replay: fixed size; AUTO_SUSPEND grid {60, 300, 600 s} as main (Snowflake default is 600 s);
-  {30 s} reported separately as the case where the resume minimum binds (see PROOF_NOTES.md).
-- Billing month = calendar month (Redset spans Mar–May 2024). Volatility = coefficient of variation of a team's monthly
-  charge, reported only for teams whose monthly execution seconds vary < 10% across months (own usage roughly fixed).
-- Rules compared: (R1) execution-only attribution, remainder unassigned; (R2) R1 + remainder split by execution share
-  (= proportional); (R3) equal split; (R4) leave-one-out marginal, rescaled to the bill; (R5) Shapley (sweep, a >= 60).
+## Frozen data definitions (2026-10-19 23:45 ET, before any F3–F5 number was computed; only a data inventory had been run)
+- Query interval: [endTime - durationExec, endTime] (worker execution). Compile/scheduling excluded.
+- Consolidation candidate group = >= 2 Snowset warehouses that each touch exactly one databaseId, the same one
+  (same-customer proxy). Warehouses touching several databases are excluded from consolidation analysis.
+- Inventory at freeze time: 2,051 warehouses, 69,182,074 queries; 1,215 single-database warehouses;
+  190 databases with >= 2 such warehouses (= candidate groups).
+- Billing replay: as-is size from warehouseSize; AUTO_SUSPEND grid {60, 300, 600 s} (Snowset has no suspend events).
+- Advisor search space, queueing model and size model are still open; they will be frozen in a dated addendum
+  before F3 runs.
 
-## Addendum 1 (2026-10-20 00:10 ET, implementation choices fixed before any real-data E2/E3 run)
-- Teams below the 1% execution share are pooled into one "other" team (so the bill still sums; they are not reported).
-- Coalition checks for core violations: all coalitions when <= 10 teams in the month; otherwise all singletons,
-  all pairs and all leave-one-out complements.
-- AUTO_SUSPEND = 30 s (minimum can bind): R5 = permutation-sampled Shapley, 2,000 permutations, seed 0; flagged approximate.
-- Months with < 2 teams active are skipped. Runner: run_e2e3.py; tested only on synthetic data before the real run.
+## Addendum 1 (2026-10-20 06:45 ET, advisor design fixed before any F3–F5 run; only inventory counts seen)
+- Groups analysed: candidate groups whose warehouses all keep one size for the two weeks (n_sizes = 1):
+  134 of 190 (by size: 2 wh 89, 3 wh 22, 4 wh 10, 5 wh 3, 6 wh 5, 7 wh 1, 8+ wh 4). Mixed-size groups reported as excluded.
+- Credits/hour = Snowset warehouseSize (1,2,4,...,64 = XS..3XL).
+- Size model: exec_new = exec_old * (size_old/size_new)^alpha(c), class c by observed exec time
+  (<1 s, 1–10 s, 10–60 s, >60 s); alpha(c) fitted on the F2 Snowflake XS/S/M runs. Advisor sizes limited to
+  {size/2, size, 2*size} of the original warehouses (ratios inside the calibrated range). Until F2: alpha = 0.5 for
+  all classes, used only for code tests, never reported.
+- Queue model: each warehouse has 8 concurrent slots (Snowflake default MAX_CONCURRENCY_LEVEL), FIFO, no slowdown
+  inside a slot (limitation; sensitivity with 4 slots). Resume adds 1 s to the first query after a suspend
+  (sensitivity 0 s and 5 s). Cache effects not modelled (limitation).
+- Latency target: for every original warehouse, p95 of (queue wait + resume delay + exec) <= 1.2 x its as-is p95
+  under the same model (sensitivity 1.1 and 1.5).
+- Search: partition of the group's warehouses x size x AUTO_SUSPEND {60, 300, 600}. Exhaustive for <= 4 warehouses;
+  greedy pairwise merging (best feasible saving first) for larger groups; greedy-vs-exhaustive gap reported on <= 4.
+- Baselines F3: (i) as-is (original size; as-is AUTO_SUSPEND assumed 600 = Snowflake default; also reported at 60, 300);
+  (ii) separate, size tuned; (iii) separate, suspend tuned; (iv) consolidate-all, best feasible size; (v) advisor.
+  Objective: billed credits = billed seconds / 3600 x credits/hour, billed with common/billing.py.
 
-## Addendum 2 (2026-10-20 07:20 ET, E1 design fixed before any Snowflake run)
-- Warehouse CB_SHARED (XS, created for this paper only, under CD_MONITOR). Two 60-min phases from the top of an hour:
-  AUTO_SUSPEND 60 then 300, identical seeded schedules (seed 2026). Teams (query tags cb_e1_a<auto>_<team>):
-  dash = bursts of 5 dashboard queries every 3-5 min (TPCH SF1); batch = one join job every 15 min (TPCH10);
-  adhoc = Poisson, mean gap 6 min (TPCH SF1); trickle = one point query every 2 min. Result cache off.
-- Truth (pulled the morning after, before the trial ends ~Nov 7): ACCOUNT_USAGE query_history, query_attribution_history,
-  warehouse_events_history, warehouse_metering_history.
-- E1 metrics: (a) model billed seconds (common/billing.py on QUERY_HISTORY execution intervals) vs metered credits,
-  per hour and total; (b) actual suspend tail after the last query vs AUTO_SUSPEND (events history);
-  (c) per-team charges under R1-R5 and Snowflake's own attribution; R2-R5 must sum to the metered invoice after
-  scaling by metered/model (scaling factor reported).
-- Budget estimate 1-2 credits. Script: sigmod27_chargeback/sf_e1.py.
+## Addendum 2 (2026-10-20 07:20 ET, F1/F2 Snowflake design fixed before any run)
+- Arrival in replay = observed execution start in Snowset (original queueing folded in; limitation). Resume delay is billed.
+- F2 (sf_f2.py) on ICDE_SZ (created for this paper only): sizes in ABBA order XS,S,M,M,S,XS; per block the 6 [TPC-H-style reporting]
+  batch statements (corrected from 7 at preflight, 13:45 ET, before any run) + 6 heavier "ladder" statements on TPCH10, 3 reps round-robin; rep 0 after a resize = warm-up, not
+  used. Exec time = QUERY_HISTORY execution_time. alpha(c) = median over statements in class c of
+  log(t_XS / t_size) / log(size / XS) using S and M (reps 1-2, both ABBA halves). Class from the statement's median XS time.
+  A class with < 2 statements takes the alpha of the nearest class with data (reported).
+- F1 (sf_f1.py) on ICDE_SUSP (created for this paper only): probe statement with gaps 20,45,75,120,240 s (x2) at
+  AUTO_SUSPEND 60, and 120,280,330,600,120,280,330 s at 300. Metric: model vs actual running periods
+  (WAREHOUSE_EVENTS_HISTORY resume/suspend) and billed seconds vs metered credits.
+- Warehouses (preflight 2026-10-20 13:44 ET): Snowflake Generation 2 (STANDARD_GEN_2), X-Small, query acceleration OFF,
+  under CD_MONITOR. Snowset (2018) ran on older hardware -> state in the paper.
+- Budget estimate: F2 1-3 credits, F1 < 0.5. Truth pulled by sf/pull_truth.py before the trial ends (~Nov 7).
 
-## Deviation 1 (2026-10-20 13:45 ET, after the first full E2/E3 run) — disclose in the paper
-- Bug found: R1 summed raw execution seconds per team. Redshift runs many queries concurrently, so the sum exceeded
-  the billed time and the "unassigned share" came out negative (median -54% at 60 s). That contradicts the frozen
-  definition (attribution assigns execution time; it cannot exceed busy time).
-- Fix: R1 now splits each busy second equally among the queries running in it (native attribution splits concurrent
-  time by resource use; Redset has no per-query resource use, so equal split is our stated approximation).
-  Sum of R1 = busy seconds exactly (tested). R2 (proportional) uses these shares, so R2 also changes.
-- Unchanged by the fix: R3, R4, R5, standalone costs, all coalition costs.
-- First-run output kept as results/e2e3_run1_bug.jsonl. Full re-run with the fixed engine; the re-run is the reported one.
-- Observed in run 1 and NOT affected by the fix (stated now so it cannot drift): R5 had 0 coalitions over standalone
-  at 60/300/600 s (29,262 checked each), consistent with Theorem 1; 94 of the 95 eligible instances produced rows
-  (one had < 2 active teams in every month).
+## Addendum 3 (2026-10-20 13:55 ET) — F2b added; disclose in the paper
+- Why: in F2's first block every statement took 0.1–3 s at XS (the [author's TPC-H-style] TPCH10 schema is small), so F2 can only
+  calibrate classes 0–1; Snowset has many longer queries. Decided after seeing the XS block timings and 4 S-block timings;
+  no alpha had been computed.
+- F2b (sf_f2b.py): same protocol as F2 (ABBA XS,S,M,M,S,XS; 3 reps; rep 0 warm-up) on ICDE_SZ against
+  SNOWFLAKE_SAMPLE_DATA.TPCH_SF100 with 6 statements (TPC-H Q1, Q6, Q3, Q18 shapes + 2 large aggregations); timeout 600 s.
+  Runs after F2 (same warehouse). alpha(c) is fitted on F2 + F2b pooled, classes from XS median time as before.
+- Budget estimate 2-3 credits.
 
-## Addendum 3 (2026-10-20 20:55 ET) — E4 definition fixed before any E4 computation
-- E4a (from the existing E2/E3 rows, no new run): for each team-month, its SHARE of the bill (charge / bill) under R2, R4,
-  R5 at AUTO_SUSPEND 60, 300, 600. Metric: median absolute change in share 60->600, per rule. Bill shifts only.
-- E4b (new run, run_e4.py, AUTO_SUSPEND 60 and 600, exact rules only): for each instance-month and each team i in turn,
-  "double" team i by adding a copy of each of its queries starting when the original ends (same duration; doubles its busy
-  time). Re-allocate. Metric (monotonicity): share of (instance-month, i, other team j) cases where j's charge RISES because i
-  doubled, per rule R2, R4, R5; also the median rise when it happens (% of j's charge).
-- Expectation stated before computing: R5 never raises another team's charge (in the coverage game an added interval can
-  only shrink others' per-second shares or leave them unchanged); R2/R4 may.
+## Addendum 4 (2026-10-20 20:25 ET) — F4 design, fixed before any feature value was computed
+- Context (disclose): F3 is already analysed (claude/icde2027-fleet-advisor-results.md). The outcome threshold below was
+  chosen after seeing F3; features, rule search and validation are fixed here before computing any feature.
+- Unit: the 131 frozen groups where every option is feasible. Outcome PAYS = advisor's extra saving over the best
+  single-knob baseline (min of size-tuned, suspend-tuned) > 5% of that baseline (26/131 positive in F3).
+  Secondary outcome: the extra saving itself (continuous), Spearman correlation with each feature.
+- Features, computed from Snowset query history only (no replay, no model): per warehouse over the two weeks
+  (a) utilization = busy seconds (union of exec intervals) / (last end - first start);
+  (b) resumes per day at AUTO_SUSPEND 60 = running periods per day under common/billing.py periods();
+  (c) idle-tail share at 60 s = 1 - busy / billed seconds (billed under periods() with min 60 s);
+  (d) overlap = share of the warehouse's running periods (60 s) that overlap another group member's running period;
+  then per group: mean and min of (a)-(d) over members, k = number of warehouses, size spread = max size / min size,
+  total billed credits at 60 s (scale).
+- Rule search: (1) each single feature, best threshold by balanced accuracy; (2) depth-2 decision tree
+  (min 5 groups per leaf). Both validated by leave-one-out cross-validation; report LOO balanced accuracy, precision and
+  recall for PAYS, and the full-data rule as the stated rule. Baseline to beat: always "doesn't pay" (balanced acc 0.5).
+- A priori expectation (stated before computing): pays when members are lightly used, resume often, have high idle-tail
+  share, low overlap, similar size.
+- Scripts: f4_features.py (Mac, Snowset), analyze_f4.py.
 
-## Pre-registered experiments (freeze before running; change only with a dated note)
-- E1 Reconciliation (Snowflake): does the billing model reproduce metered credits? Metric: |model - metered| / metered per hour and overall.
-  Allocation rules must sum to the metered invoice exactly (after a documented residual step).
-- E2 Unattributed share (Redset): fraction of billed seconds outside any query's execution (idle + tails + minimums),
-  per instance; distribution across instances, by serverless/provisioned.
-- E3 Rule comparison (Redset + Snowflake): native-style execution-only attribution + proportional residual, equal split,
-  marginal (leave-one-out), Shapley (sweep). Metrics:
-  (a) core violations: share of teams/coalitions charged above standalone cost;
-  (b) overcharge vs Shapley; (c) month-to-month volatility of each team's charge with its own usage held fixed;
-  (d) compute time per instance-month.
-- E4 What-if: change in each team's charge when AUTO_SUSPEND changes (60/300/600 s) or a team's workload doubles.
-  Bill shifts only -- no leave/stay analysis.
-- Primary claims allowed only if they hold on Redset AND match the direction on the Snowflake run.
+## Addendum 5 (2026-10-20 20:45 ET) — F5 variants fixed before any F5 run
+- One-at-a-time changes to the F3 setup, frozen 134 groups, same analysis (analyze_f3.py, analyze_f4.py rule re-fitted and
+  the F3 rule overlap_mean > 0.547 also applied unchanged):
+  latency bound 1.1x and 1.5x; 4 slots; resume delay 0 s and 5 s; alpha x0.8 and x1.2 (all classes).
+- Question per variant: does the ordering hold (suspend-tuned >> consolidation; median extra over best single knob ~0)
+  and does overlap remain the top feature? Results reported as a robustness table, whatever they show.
 
-## Schedule
-- Wk1 Oct 20–26: data on disk; Redset loader; engine (4 rules + min-bill extension); write proof; freeze this plan.
-- Wk2 Oct 27–Nov 2: E1 Snowflake run (after credit check); E2–E4 on Redset.
-- Wk3 Nov 3–9: results, figures.
-- Wk4 Nov 10–16: full draft.
-- Wk5 Nov 17–24: independent fact-check; co-authors final; submit Nov 24.
+## Pre-registered experiments (freeze before running)
+- F1 Billing validation on Snowflake (suspend-gap script): |model - metered| / metered.
+- F2 Size model fit: per class error of predicted runtime at S, M from XS (and leave-one-size-out).
+- F3 Savings on Snowset vs baselines: (i) as-is; (ii) one warehouse each, tuned size only; (iii) tuned suspend only;
+  (iv) consolidate-all; (v) advisor. Metrics: billed credits, % latency targets met.
+- F4 When consolidation pays: savings vs the two warehouses' utilization and burst overlap -> a stated rule.
+- F5 Sensitivity: assumed AUTO_SUSPEND, latency target, size-model error.
 
-## Deviation 2 (2026-10-22 08:40 ET, found in the independent number check after all results) — disclose in the paper
-- Runner cut calendar months with DuckDB strftime(to_timestamp(s)), which uses the session time zone (US Eastern).
-  Redset starts 2024-03-01 00:00 UTC, so its first ~5 h fell into a "2024-02" stub month: 56 instance-months per setting
-  with a median billed time of 5.2 h (vs ~600 h for full months). The frozen definition says Mar–May calendar months.
-- Fix: drop the 2024-02 stub rows (no re-run; rows are independent). Reported numbers use 264 instance-months, 1,414
-  team-months, 25,856 coalitions and 7,096 bystander cases per setting. Results with the stub kept are reported as a
-  sensitivity line. Effect: every headline moves by < 3 points EXCEPT month-to-month volatility, where the stub had
-  excluded most teams (29 vs 117 eligible); without it Shapley is the steadiest rule (CV 3.8–4.5% vs 5.6–5.9%
-  proportional, 9.0–26.6% marginal). Both versions are reported; the earlier "negative result" is withdrawn.
-- Also from the check: medians now use the standard (midpoint) median; live-run charges are scaled to the metered
-  compute invoice (0.953 and 1.426 credits) instead of the modelled one; engine timing re-measured with
-  verify/bench_engine.py (1M queries, 10 teams: sweep 0.2–0.6 s, all rules 6.7–7.3 s, one core).
+## Schedule [(interleaved with other work)]
+- Wk1 Oct 20–26: Snowset loader + period reconstruction; advisor search design; freeze this plan.
+- Wk2 Oct 27–Nov 2: Snowflake F1 + F2 runs (after credit check; [separate from other runs]).
+- Wk3–4 Nov 3–16: F3–F5 on Snowset.
+- Wk5 Nov 17–24: draft ([other work has priority this week]).
+- Wk6 Nov 25–Dec 1: fact-check, co-authors final, submit Dec 1.
 
-## Independent review (2026-10-22 09:30 ET) — changes in draft 3
-- SQL listing rewritten as a prefix-sum sweep (old range join was O(islands x segments): 107 s per 1M queries at a=60).
-  New listing = sql/coverage_shapley.sql; matches sweep/brute force to 1e-12 s; 1M queries 0.83 s (a=600) / 1.08 s (a=60), 1 core.
-- R4's P3 failure attributed to rescaling (raw marginals can only fall). Prop. below-minimum example made non-degenerate.
-- Corrected: 87.7% (not 87.6%); "within 1.2%" of event-recorded running time; tail deciles with standard median
-  (7.5/12.5/16.3 low; 6.8/10.9/8.4 high); named-team-only P2 rates added; R2 passes the doubling test by construction (stated);
-  stability claim softened; Databricks auto-stop minimums corrected; rais24 authors corrected; keywords/CCS added.
+## Deviation 6 (2026-10-22 08:40 ET, found in the independent number check) — disclose where relevant
+- analyze_f4.py's Spearman did not average tied ranks (about half the groups have extra saving = 0). Tie-corrected
+  values are reported: overlap_mean +0.51 (was +0.49), k +0.30, size_spread -0.27, idle_share_mean -0.20,
+  util_mean +0.13; across F5 variants +0.42 to +0.60. Rule, LOO accuracy and all savings are unaffected.
+- F1 (Addendum 2 metric = model built from the probe statements): 60 s phase 7/7 periods, time ratio 0.994; 300 s
+  4/4, 0.998. The earlier 1.083 counted every statement logged on ICDE_SUSP in the window, including an administrator's
+  untagged metadata statements; reported as a secondary line, not the headline.
 
-## Addendum 4 (2026-10-22 17:10 ET) — E5 and E6 fixed before either is run
-- E5 isolated growth (run_e5.py, Redset, same eligible instances and 1% pooling as E2/E3, AUTO_SUSPEND 60 and 600):
-  for each instance-month and each named team i, add 10 one-second queries for team i at uniform random times within the
-  month's observed span [min s, max e] (Python random.Random seeded with "key|month|i"). Re-allocate. Metric: share of
-  (instance-month, i, other named team j) cases where j's charge RISES, per rule R2, R4, R5; median rise when it does.
-  Months labelled 2024-02 (the 5-hour stub, Deviation 2) are dropped in the analysis, as for every other result.
-  Expectation stated before running: R5 never rises (Prop. bystander); R2 rises in many cases (each isolated query adds up
-  to a + 60 s of bill but 1 s of execution); R4 in some.
-- E6 SQL on Snowflake (sf/sf_sql_check.py): run the paper's chargeback listing inside Snowflake (warehouse CB_SHARED, XS)
-  over QUERY_HISTORY of the E1 run (team = query tag, interval = [end - execution_time, end], a = 60 and 300), and compare
-  each team's charge with the Python sweep on the same intervals. Then time the listing on a 1,000,000-row synthetic table
-  (GENERATOR; 10 teams; one month; exponential 5 s run times; a = 60 and 600) on the XS warehouse. Metrics: max abs
-  difference (s); elapsed time. If Snowflake rejects any syntax, record the error and the minimal change, and report it.
-  Budget < 0.1 credits.
+## Deviation 7 (2026-10-22 09:00 ET, from the independent review) — disclose in the paper
+- analyze_f3.py/analyze_f4.py restricted every comparison to groups where ALL options were feasible, including consolidate-all.
+  That drops 3 frozen groups (9, 17 and 2 warehouses) from comparisons that do not involve consolidate-all, among them the
+  17-warehouse group where the joint search saves 70.3% over the best single knob (68.5% of all extra saving).
+- Fix: compare as-is / size-only / suspend-only / joint search on all 134 groups (every one feasible); report consolidate-all
+  on the 131 groups where it is feasible. Applied to F3, F4 (features, LOO rule) and every F5 variant (now all n = 134).
+  Headline: suspend 23.7% (was 32.2%), joint 35.0% (was 37.4%), consolidation adds 14.8% of the best single-knob total
+  (was 7.7%), pays in 27/134 groups by 5.1–70.3% (median 12.7%). LOO rule 0.759 / precision 0.67 / recall 0.59.
+  Script: verify/icde_all134.py. The old 131-group numbers are reported as a sensitivity sentence.
+- Also: alpha.json in the cloud working copy was the placeholder; fitted values restored from the results log (Mac copy is
+  authoritative). Not reported (pre-registered, not computed): F2 leave-one-size-out error, greedy-vs-exhaustive gap,
+  F1 billed-seconds-vs-metered-credits per hour beyond the 1.35 credits/h rate.
 
-## E5 / E6 results (2026-10-25; analysis by the pre-registered definitions, stub month dropped)
-- E5 isolated growth: R2 raises a bystander in 67.9% (60 s) / 40.6% (600 s) of 7,096 cases; R4 50.2% / 26.2%; R5 0 / 0.
-  Median rises 0.01–0.2%. With stub kept: R2 64.3/37.3, R4 47.8/24.4, R5 0. As expected before the run.
-- E6 Snowflake (sf/runs/e6_1792702899.json): listing ran as printed; vs Python sweep max diff 2.3e-13 s (a=60), 5.7e-14 s
-  (a=300); 1M synthetic rows on XS: 1.04 s (a=600), 3.48 s (a=60). No fallback needed.
+## Draft 4 expansion (2026-10-22, exploratory, not pre-registered) — labelled as such where relevant
+- Size-model validation from alpha_fit.json: in-sample median error 12.4% (p90 44%); leave-one-size-out 12.4% / 24.8%;
+  no-speed-up 60%, linear 35%.
+- As-is timeout: joint saves 35.0% / 28.0% / 14.8% (vs 600 / 300 / 60 s); per-group median 61% / 46% / 0%.
+- Case study 17-warehouse group (verify/case17.py): >=4 members running at every moment, 12.8 on average; 4,093
+  separate warehouse-hours vs 960 merged; mean utilisation 0.42 vs fleet median 0.04.
+- Top-8 groups hold 96% of consolidation saving; rule TP 18 (97.6% of saving), FN 9 (0.6%), FP 8 (median extra 0%,
+  median size spread 4x).
+- Overlap SQL (sql/overlap.sql = paper listing) reproduces overlap_mean exactly on the 7 groups testable locally.
 
-## Addendum 5 (2026-10-26 21:10 ET) — E7 (assumption A1 sensitivity), fixed before it is run
-- Question: A1 keeps each query's timing when other teams are removed; with less contention a team alone might run faster,
-  lowering its standalone cost and possibly pushing charges above it.
-- E7 (run_e7.py, Redset, same eligible instances, 1% pooling, months as E2/E3; stub month dropped in analysis;
-  AUTO_SUSPEND 60 and 600): for every named team-month, recompute the team's standalone cost with every one of its
-  execution intervals shortened by f in {10%, 20%, 30%} (start kept, end moved earlier). Compare with each rule's charge
-  computed on the full warehouse at original timing (R2, R3, R4, R5). Metric: share of named team-months charged above the
-  shortened standalone cost, per rule and f. Expectation stated before running: R5 stays at or near 0 for 10%, because the
-  shortened standalone cost loses at most f x the team's busy time while tails are unchanged; R2/R3 rise slightly.
+## Draft for the research track, EAB (2026-10-27) — post-hoc analyses, reported as such
+- Pre-registered secondary metric computed now: greedy vs exhaustive search on all 32 groups of 3-4 warehouses
+  (verify/greedy_gap.py): identical cost in 32/32; re-run exhaustive equals the main run in 32/32.
+- Exploratory: Proposition 1 tested on all 91 merged warehouses (verify/mechanism_test.py): equal-size merges realised
+  1,342 vs 1,340 credits predicted (median ratio 1.003); mixed-size 12,998 vs 12,859 predicted; rate change costs 12,692.
+- Exploratory: auto-suspend saving vs features (idle share +0.68, credits -0.75, utilisation -0.42, overlap -0.57);
+  counter-example pair (verify/counterexample.py); savings by group size; per-period billing table.
 
-## E7 result (2026-10-26 22:10 ET) — expectation NOT met; reported as such
-- Named team-months charged above the shortened standalone cost (stub dropped), f = 10 / 20 / 30%:
-  60 s: R5 8.5 / 12.3 / 14.4%; R2 21.1 / 22.4 / 24.3; R3 40.4 / 41.8 / 43.4; R4 13.9 / 16.3 / 18.9.
-  600 s: R5 3.1 / 4.0 / 4.6%; R2 15.4 / 16.2 / 16.8; R3 29.1 / 29.2 / 29.4; R4 8.8 / 10.0 / 11.8.
-- R5 excess at 10%: median 2.1% (60 s) / 0.4% (600 s), p90 8.1 / 3.6%. ~2/3 of violators had <1% slack at observed timing.
-- Stated expectation ("R5 at or near 0 at 10%") was wrong; the paper says so.
+## Addendum 6 (2026-10-27 07:00 ET) — change of track and title; bookkeeping
+- Track and title changed: the paper is submitted to the ICDE 2027 Research track, Experiment, Analysis and Benchmark
+  category (Round 2, due 2026-11-11), as "[Experiment, Analysis, and Benchmark] Consolidate or Separate? Usually Neither:
+  When Merging Cloud Data Warehouses Pays". It is NOT submitted to the Industry & Applications track. The header of this
+  file records the plan as first written (industry track, working title "A Billing-Exact Fleet Advisor").
+- Schedule above is the schedule as originally planned; the work ran ahead of it (all runs 2026-10-19 to 2026-10-22,
+  single author). Timestamps in this file are the author's own and are mirrored in the public git history; they were not
+  lodged with an external registry.
+- Paths renamed in the public repository: verify/*.py -> analysis/*.py; the results notes referred to as
+  claude/icde2027-fleet-advisor-results.md are private working notes, superseded by the scripts in analysis/.
+- Mapping of the paper's deviation list to this file: paper (1) = runner note under F3 ("155 groups ... frozen 134");
+  (2) = Addendum 4 context; (3) = Deviation 7; (4) = Deviation 6; (5) = Addendum 3; (6) = "Draft for the research track"
+  (greedy vs exhaustive, held-out size-model error); (7) = Deviation 8 below.
 
-## Addendum 6 (2026-10-27 21:25 ET, before it is run) — the pre-registered no-compile sensitivity, not run until now
-- The frozen definitions list "Sensitivity: without compile"; it was never run and the paper did not report it (found in
-  an external review of the plan against the paper). Run now exactly as defined: interval end = arrival + queue +
-  execution (compile_s subtracted); everything else unchanged (eligibility, 1% team rule recomputed on the shorter
-  intervals, months, rules). Settings 60/300/600 s. run_e2e3.py --no-compile -> results/e2e3_nocompile.jsonl;
-  analysis/nocompile.py prints main vs no-compile side by side.
-- Expectation: the unassigned share rises slightly (less attributed time); the ordering of the rules and Shapley's zero
-  standalone violations are unchanged (the theorem does not depend on how intervals are measured). Reported either way,
-  in one sentence in the sensitivity section.
-- Addendum 6 pushed to this repository in commit 2909287 (2026-10-27 21:28 ET), before the no-compile run started.
+## Deviation 8 (2026-10-27 07:00 ET, after a second review) — definition of "consolidation pays" tightened
+- Found: 3 of the 27 groups counted as "pays" merge nothing; their extra saving comes from changing size and timeout
+  together, which neither single-knob option does. 3 more save under 1 credit in two weeks (relative 5% on a near-zero bill).
+- New definition used in the paper: extra saving > 5% AND the joint plan merges warehouses AND >= 1 credit saved.
+  21 groups pay (old definition: 27; both reported). All groups without a merge together save 0.54 credits of 14,361.
+- Re-fitted rule (same procedure as Addendum 4): LOO depth-2 tree balanced accuracy 0.798 (precision 0.64, recall 0.67),
+  full-data threshold overlap_mean > 0.617; single stump LOO 0.821 (precision 0.36, recall 0.95) at 0.33. The original
+  rule (overlap_mean > 0.547) applied unchanged: in-sample 0.81. Script: verify/pays_v2.py (repo: analysis/pays_v2.py).
+- Exhaustive search extended to the 10 greedy groups of 5-8 warehouses (verify/greedy_gap_large.py): results reported as
+  they come out.
 
-## No-compile sensitivity result (2026-10-28 05:44 ET) — expectation met
-- 94 instances at each setting (stub month dropped). Main / no compile, 60 / 300 / 600 s:
-  unassigned median 31.4/46.6, 50.2/61.3, 56.3/65.9%; team-months over standalone R2 16.6/17.7, 14.7/15.5, 12.4/13.7%;
-  R3 44.1/46.8, 36.6/38.1, 33.4/34.1%; R4 4.3/4.5, 3.5/3.2, 3.0/2.8%; R5 0 in all; R5 coalition violations 0 of 24,692.
-- The unassigned share rises (compile time leaves the attributed time but stays in the bill); the rules' ordering and
-  Shapley's zero violations are unchanged. Script: analysis/nocompile.py.
+## Result note (2026-10-27 08:00 ET) — exhaustive search on groups of 5-8 warehouses
+- 10 groups (k = 5,5,5,6,6,6,6,6,7,8), exhaustive over all set partitions (Bell(8) = 4,140) with each block's best
+  (size, timeout) cached. Greedy cost == exhaustive cost in 10/10 (max gap 0.000%); greedy re-run == main run in 10/10.
+  One group (157924786629569817) has a different but equally cheap plan. Unchecked: the groups of 9, 17 and 18 warehouses.
+  File: icde27_fleet/results/greedy_gap_large.jsonl; summary printed by analysis/paper_numbers.py.
+
+## Addendum 7 (2026-10-27 20:21 ET, written before running) — F7: time-split test of the overlap rule (exploratory)
+- Motivation (third review): leave-one-out across groups does not show the rule predicts the future. A platform team
+  would look at past history, decide, and live with the result.
+- Split: week 1 = first 7 days of the trace; week 2 = the remaining ~6.3 days. Same 134 frozen groups; groups with a
+  warehouse that runs nothing in either week are excluded and counted.
+- Per group and week: features as f4_features.py; options as run_f3.py (as-is 600 s, size-tuned, suspend-tuned, joint
+  search), latency targets 1.2 x that week's as-is p95. Script: f7/run_split.py -> f7/split.jsonl.
+- Label per week: pays = joint plan merges warehouses AND extra saving > 5% over the best single knob AND >= 0.5 credits
+  saved (the 1-credit floor of Deviation 8, pro-rated to one week).
+- Rule test: threshold on week-1 overlap_mean chosen to maximise week-1 balanced accuracy (ties: lowest threshold);
+  predict week-2 labels from week-1 features. Also report the full-trace threshold (0.617) used the same way, and the
+  week-2 rule on week-2 labels for reference. Metrics: balanced accuracy, precision, recall.
+- Act-on-history: flagged groups adopt their week-1 joint plan, the rest their week-1 suspend-tuned timeouts; both
+  replayed unchanged on week-2 traffic against week-1 targets. Report week-2 cost vs (a) week-1 timeouts everywhere,
+  (b) the week-2 oracle joint search, and the number of groups that miss a latency target.
+- Expectation, recorded now: week-1 -> week-2 balanced accuracy within 0.1 of the leave-one-out value (0.80), and acting
+  on week-1 plans captures at least 80% of the oracle week-2 consolidation saving. Reported whatever the outcome.
+
+## Addendum 8 (2026-10-27 20:27 ET, written before any run) — F6: a real merge on Snowflake
+- Motivation (third review): the billing validation (F1) used one warehouse with sequential probes and never measured a
+  merge, which is the paper's subject. F6 runs Snowset windows separately and merged on real warehouses.
+- Window scan (f6/scan_windows.py -> f6/windows.jsonl): frozen groups, same-size member pairs, 90-minute windows every
+  30 min; kept if each member has 15-400 statements, no statement > 600 s, merged concurrency <= 8 (so no queueing),
+  and each member is billed >= 10 min at 60 s auto-suspend. 1,373 windows of 29 pairs.
+- Selection rule (f6/make_schedule.py), fixed before seeing any Snowflake result:
+  HO = highest predicted saving among windows of groups where consolidation pays, with each member billed <= 80% of
+  the window (both members suspend at times); PO = among the same, in a different group, the window whose predicted
+  saving is closest to 20%; TT = among windows with predicted saving <= 2%, the one with the largest smaller member bill.
+- Chosen: HO group 2942415362034685105 (132 statements), PO group 5967229572268762593 (168), TT group
+  386941512000490153 (248). Schedule f6/schedule.json, sha 8115135dc25b0508.
+- Run (sf_f6.py, ./run_sf.sh f6): nine dedicated X-Small warehouses (sf/setup_f6.sql), AUTO_SUSPEND 60; per scenario
+  member A and member B on their own warehouses and both on a third, all three at the same wall-clock time. Each
+  statement = GENERATOR(TIMELIMIT => d), d = Snowset duration rounded to whole seconds (min 1 s); durations are used
+  as-is at X-Small (this test is about billing, not size scaling). Statements are sent asynchronously at their offsets.
+- Truth (./run_sf.sh pull6, the morning after): QUERY_HISTORY, WAREHOUSE_EVENTS_HISTORY, WAREHOUSE_METERING_HISTORY
+  for the nine warehouses -> sf/truth/f6_*.csv. Analysis: f6/analyze_f6.py.
+- Predictions, recorded now (replay at X-Small, 8 slots, 1 s billed resume delay; billed minutes):
+    HO  A 26.8  B 26.9  A+B 53.7  merged 26.9  saving 49.8%
+    PO  A 20.4  B 62.6  A+B 83.0  merged 66.4  saving 20.0%
+    TT  A 41.5  B 41.2  A+B 82.6  merged 82.6  saving  0.0%
+- Primary outcome: saving fraction (A+B-merged)/(A+B) from metered compute credits, per scenario, against the prediction.
+  Expectation: within 5 percentage points in each scenario, and ordered HO > PO > TT. Secondary: model on the
+  statements as executed vs Snowflake's resume/suspend events, per warehouse; implied credits per running hour equal
+  across the nine warehouses. Reported whatever the outcome, including failed or late statements.
+- Budget: about 6.6 billed X-Small hours (7-9 credits). Must run before the trial ends (~Nov 7).
+
+## F7 result (2026-10-27 21:50 ET) — expectations met; analysis exactly as in Addendum 7
+- 72 groups analysed, 62 excluded (a member runs nothing in one week); the 72 hold 96.0% of the full-trace consolidation
+  saving and 16 of the 21 paying groups. Pays: week 1 14, week 2 15, both 14.
+- Week-1 threshold: overlap > 0.346. Week-1 features -> week-2 labels: bal.acc 0.88, precision 0.52, recall 1.00.
+  Full-trace threshold 0.617 the same way: 0.86 / 0.75 / 0.80. Reference week-2 on week-2 at 0.617: 0.87 / 0.80 / 0.80.
+- Act on history (rule + week-1 plans) in week 2: 18,609 credits vs 25,223 with week-1 timeouts everywhere and 18,586 for
+  the week-2 oracle joint search: 6,614 of 6,637 credits of consolidation saving captured (99.7%).
+- Groups missing a week-1 latency target in week 2: rule 35, timeouts 36, no change at all 36 (f7/asis_miss.py, added as
+  context after the pre-registered metrics): week-to-week p95 drift, not the plans.
+
+
+## F6 result (2026-10-28 05:48 ET) — expectation met; analysis as in Addendum 8
+- Ran 2026-10-27 20:39-22:15 ET; 1,096 statements sent, none failed to send; lateness median 0.10 s, p90 0.48 s, 34 of
+  1,096 later than 1 s (max 30.6 s, a burst in TT). Truth pulled 2026-10-28 05:47 ET.
+- Metered compute credits, separate A+B vs merged, saving (predicted before the run):
+    HO 1.2004 vs 0.6022 -> 49.8% (49.8%);  PO 1.8720 vs 1.4955 -> 20.1% (20.0%);  TT 1.6819 vs 1.6815 -> 0.0% (0.0%).
+  Within 0.1 percentage points in every scenario (expectation: within 5), ordered HO > PO > TT.
+- Secondary: billing model on executed statements vs Snowflake resume/suspend events, per warehouse: 0.31% worst (9
+  warehouses, 2-30 periods each). Implied credits per running hour 1.351-1.356 on all nine. No overload queueing.
+- Disclosed: the session's statement timeout (300 s, set in sf_wcp.connect for earlier runs) cut the three TT statements
+  longer than 300 s (304, 513, 563 s) on both their own and the merged warehouse, so TT ran 74.7 rather than 82.6 billed
+  minutes; the comparison is unaffected because both sides were cut the same way.
+- Analysis-script fix before reading any metered number: Snowflake logs RESUME/SUSPEND_WAREHOUSE with state STARTED;
+  analyze_f6.py first filtered on COMPLETED (found nothing) and now takes the events regardless of state, as validate_f1.py.
+

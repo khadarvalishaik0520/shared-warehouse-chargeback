@@ -1,20 +1,22 @@
 #!/bin/bash
-# ./run.sh analysis   every number, table and figure in the paper from the committed result files (minutes, no download)
-# ./run.sh e2e3|e4|e5|e7|e2e3nc   re-run one replay on Redset (needs data/redset_iv from ./get_data.sh; hours)
+# Reproduce the replay results (needs data/snowset_iv from ./get_data.sh). Long-running: hours on a laptop.
+#   ./run.sh f3          main replay -> icde27_fleet/results/f3.jsonl
+#   ./run.sh f4          group features -> icde27_fleet/results/f4_features.jsonl
+#   ./run.sh f5 <v>      sensitivity variant, v in: t11 t15 s4 r0 r5 a08 a12
+#   ./run.sh analysis    every number, table and figure in the paper from the result files (minutes)
 set -eu; cd "$(dirname "$0")"
+F3="python3 -u icde27_fleet/run_f3.py data/snowset_iv icde27_fleet/results icde27_fleet/alpha.json"
 case "${1:-}" in
-  analysis)
-    python3 chargeback/analyze_e2e3.py chargeback/results/e2e3.jsonl
-    python3 chargeback/analyze_e4b.py chargeback/results/e4b.jsonl
-    python3 analysis/verify_sigmod.py chargeback/results --drop-feb
-    python3 analysis/explore_sigmod.py
-    python3 analysis/e5_e7.py chargeback/results
-    python3 analysis/nocompile.py chargeback/results
-    python3 analysis/sampled_accuracy.py
-    python3 analysis/bench_engine.py
-    python3 sf/validate_billing.py sf/truth sf/runs/e1_1792522545.jsonl CB_SHARED auto
-    (cd paper && python3 make_figs.py) ;;
-  e2e3|e4|e5|e7) python3 -u chargeback/run_${1}.py data/redset_iv chargeback/results ;;
-  e2e3nc) python3 -u chargeback/run_e2e3.py data/redset_iv chargeback/results --no-compile ;;
-  *) sed -n 2,3p "$0" ;;
+  f3) $F3 ;;
+  f4) python3 -u icde27_fleet/f4_features.py data/snowset_iv icde27_fleet/results/f4_features.jsonl ;;
+  f5) case "${2:-}" in
+        t11) $F3 --target 1.1 --tag f5_t11 ;;  t15) $F3 --target 1.5 --tag f5_t15 ;;  s4) $F3 --slots 4 --tag f5_s4 ;;
+        r0) $F3 --resume 0 --tag f5_r0 ;;  r5) $F3 --resume 5 --tag f5_r5 ;;
+        a08) $F3 --alpha-scale 0.8 --tag f5_a08 ;;  a12) $F3 --alpha-scale 1.2 --tag f5_a12 ;;  *) sed -n 2,6p "$0" ;; esac ;;
+  analysis) python3 analysis/icde_all134.py; python3 analysis/icde_review2.py; python3 analysis/paper_numbers.py
+            python3 analysis/pays_v2.py; python3 sf/validate_f1.py; (cd paper && python3 make_figs.py)
+            python3 analysis/case17.py; python3 analysis/counterexample.py
+            python3 icde27_fleet/f7/analyze_split.py icde27_fleet/f7/split.jsonl
+            python3 icde27_fleet/f6/analyze_f6.py; python3 icde27_fleet/f6/fig_f6.py ;;
+  *) sed -n 2,6p "$0" ;;
 esac

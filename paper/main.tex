@@ -1,733 +1,747 @@
-\documentclass[sigconf]{acmart}
-\settopmatter{printacmref=false}
-\setcopyright{none}
-\renewcommand\footnotetextcopyrightpermission[1]{}
-\acmConference[SIGMOD-Companion '27]{Companion of the 2027 International Conference on Management of Data}{June 13--18, 2027}{Huntington Beach, CA, USA}
-\usepackage{booktabs}
-\usepackage{amsmath}
+\documentclass[conference]{IEEEtran}
+\usepackage{graphicx,booktabs,amsmath,amssymb,url}
+\usepackage[hidelinks]{hyperref}
+\usepackage{listings}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
-\usepackage{listings}
 \lstset{basicstyle=\ttfamily\scriptsize,columns=fullflexible,keepspaces=true,frame=tb,framerule=0.4pt,
-  keywordstyle=\bfseries,language=SQL,morekeywords={WITH,OVER,PARTITION,LEAD,ROWS,UNBOUNDED,PRECEDING,USING},
-  aboveskip=4pt,belowskip=2pt,xleftmargin=2pt}
+  keywordstyle=\bfseries,language=SQL,morekeywords={WITH,OVER,PARTITION,LAG,ROWS,UNBOUNDED,PRECEDING},aboveskip=3pt,belowskip=2pt}
 \newcommand{\autos}{\textsc{auto\_suspend}}
-\newcommand{\yes}{\checkmark}
-\newcommand{\no}{$\times$}
+\newtheorem{proposition}{Proposition}
 
-\emergencystretch=1.5em
 \begin{document}
-\title{Who Pays for Idle? Fair Chargeback for Shared Cloud Data Warehouses}
+\title{[Experiment, Analysis, and Benchmark] Consolidate or Separate? Usually Neither:\\When Merging Cloud Data Warehouses Pays}
 
-% AUTHOR LIST IS FROZEN AT SUBMISSION (SIGMOD industrial rules) -- confirm names, order, affiliations before Nov 24.
-\author{Khadarvali Shaik}
-\orcid{0009-0006-4117-4973}
-\affiliation{\institution{Independent Researcher}\city{Richmond}\state{VA}\country{USA}}
-\email{khadarvali.shaik@ieee.org}
-\author{Syam Sajit Dondapati}
-\orcid{0009-0004-0576-7152}
-\affiliation{\institution{American International Group}\city{New York}\state{NY}\country{USA}}
-\email{dsyam22@gmail.com}
-\author{Abdul Rasheed Shaik}
-\orcid{0009-0009-8929-2460}
-\affiliation{\institution{Independent Researcher}\city{Richmond}\state{VA}\country{USA}}
-\email{abdulrasheed.shaik@ieee.org}
-
-\begin{abstract}
-When several teams share one cloud data warehouse, someone has to turn a single invoice into per-team charges. Warehouses
-bill per second while they run, with a minimum on every resume and an idle tail until auto-suspend, but per-query
-attribution assigns only the time queries spend executing. On three months of per-user query history from the 94 shared
-instances in Amazon's Redset trace, execution-time attribution leaves a median 31--56\% of the bill unassigned, depending
-on the auto-suspend setting; in a two-hour live run of short queries on Snowflake, the platform's own attribution left 88--93\%
-unassigned. Teams split this remainder with ad hoc rules. We show that the common rules are unfair in ways a finance team
-would notice: proportional splitting charges 12--17\% of team-months more than a private warehouse would cost them (a median
-33--44\% more), equal splitting overcharges 33--44\%, and when one team adds a few scattered queries, proportional and
-marginal-cost splitting raise another team's charge in 41--68\% and 26--50\% of cases. We model chargeback as a cost-sharing game defined by the billing rules and prove that,
-when auto-suspend is at least the 60-second resume minimum, the game is a coverage game: its Shapley value is in the core,
-never penalises bystanders, and is computed exactly in $O(m\log m)$ for $m$ queries by splitting each billed second among
-the teams that keep it running. The rule fits in one SQL query. Across 25,856 coalition checks and 14,192 growth cases
-per setting, it never charges a team or group above its standalone cost at observed timing and never raises a bystander's
-charge; if teams ran 10\% faster alone, it would exceed that cost for 3--9\% of team-months by a median 0.4--2\%, against
-9--40\% of team-months for the common rules. Our engine
-reproduces the running time in Snowflake's warehouse events to within 1.2\%; code, results and the pre-registration are public.
-\end{abstract}
-
-\begin{CCSXML}
-<ccs2012><concept><concept_id>10002951.10002952</concept_id><concept_desc>Information systems~Data management systems</concept_desc><concept_significance>500</concept_significance></concept></ccs2012>
-\end{CCSXML}
-\ccsdesc[500]{Information systems~Data management systems}
-\keywords{cloud data warehouse, chargeback, cost attribution, Shapley value, auto-suspend, FinOps}
+% AUTHOR LIST: names, affiliations and ORCIDs are required at submission; a CMT profile is required for every author.
+\author{\IEEEauthorblockN{Khadarvali Shaik}
+\IEEEauthorblockA{Independent Researcher\\Richmond, VA, USA\\khadarvali.shaik@ieee.org}
+\and
+\IEEEauthorblockN{Syam Sajit Dondapati}
+\IEEEauthorblockA{American International Group\\New York, USA\\dsyam22@gmail.com}}
 
 \maketitle
 
+\begin{abstract}
+Merging cloud data warehouses saves money when their workloads run at the same time, not when they sit idle. Under
+per-second billing, warehouses that run side by side each pay for the seconds they share, and a merged warehouse pays for
+them once; idle time, the usual reason to consolidate, is removed more cheaply by a shorter auto-suspend timeout. We derive
+this from the billing rule, confirm it on Snowflake---three real merges saved 49.8\%, 20.1\% and 0.0\% of metered
+credits against 49.8\%, 20.0\% and 0.0\% predicted---and test it on two weeks of Snowflake's public fleet trace: 134 groups of warehouses that serve
+the same database, 388 warehouses and 18.6 million queries, replayed under a billing model checked against Snowflake's own
+records (running time within 0.6\%), with size scaling measured on Snowflake. Under a 1.2$\times$ latency bound,
+auto-suspend alone removes 24\% of the billed compute (60\% for the median group), assuming every warehouse runs the
+600-second default; resizing almost never pays; and consolidation adds nothing for the median group once suspend is tuned.
+Where it does pay---21 of 134 groups---it cuts the best tuned bill by 5--70\% (median 12\%); these groups hold 98\% of the
+fleet's consolidation saving, 15\% of the tuned total, and one 17-warehouse group holds two thirds of it (without it, 5.5\%). Across the 79 same-size merges the search makes,
+the saving predicted from overlap alone matches the replay's to within 0.2\% in total. A rule
+on the overlap of running periods, computed from query history alone, finds the groups where merging pays with a
+leave-one-out balanced accuracy of 0.80; fitted on one week of history, it predicts which groups pay the next week with
+balanced accuracy 0.86--0.88. The findings hold across seven sensitivity settings. All code, results,
+calibration logs and the pre-registration are public.
+\end{abstract}
+
 \section{Introduction}
-Shared warehouses are cheaper than one warehouse per team: idle tails and resume minimums are paid once instead of many
-times. The saving creates a new problem. The cloud provider sends one invoice per warehouse, and the platform team that runs
-it must decide how much each consuming team pays. In practice this \emph{chargeback} (or, when no money moves,
-\emph{showback}) drives budgets, prompts disputes, and shapes behaviour: teams that believe they are overcharged ask for a
-private warehouse, which costs the organisation more, and teams that believe they ride free have no reason to change.
-In the first author's experience operating a shared Snowflake platform for many engineering teams, chargeback disputes follow
-a pattern. A team issuing short scheduled queries is charged little under execution-time attribution yet keeps the
-warehouse awake all day. A team with long batch jobs pays most under proportional splitting and asks for a private
-warehouse. Each new tenant changes everyone else's charge. Finance wants a split that adds up to the invoice and that
-teams accept as fair.
+Most organisations do not run one Snowflake warehouse but dozens, created team by team and workload by workload. Each one
+is billed for every second it runs and keeps running for a while after its last query~\cite{sf-warehouses,sf-create}, so
+a team that issues a two-second dashboard query every few minutes pays mostly for idle time. Platform teams have three
+remedies. They can lower the auto-suspend timeout, so that idle warehouses stop sooner~\cite{sf-considerations}. They can
+resize warehouses, trading a higher rate for shorter runs. And they can consolidate warehouses, so that several teams share
+one running warehouse instead of each paying for its own idle tails. Vendor guidance discusses the first two; engine-side
+systems scale resources automatically~\cite{rais24,scalesense26,costintel24}. None of this answers the question a platform
+team faces when it looks at its own fleet: \emph{given our warehouses, how much does each remedy save, should we merge some
+of them, and which?}
 
-Cloud data warehouses now expose per-query cost attribution. Snowflake's
-\texttt{QUERY\_\allowbreak ATTRIBUTION\_\allowbreak HISTORY}, for example, assigns warehouse credits to queries in
-proportion to their resource use while they run, but explicitly excludes idle time~\cite{sf-attribution}. Idle time is not a
-rounding error. A warehouse is billed per second from resume until it suspends, with a 60-second minimum on each resume, and it stays
-up for \autos{} seconds after the last query ends~\cite{sf-warehouses,sf-create}. For bursty, interactive workloads most of
-the bill is this tail. What is left after attribution is split by rules of thumb: in proportion to attributed usage,
-equally, or by some marginal-cost calculation. None of them was designed for the billing contract it is applied to.
-
-This paper asks whether those rules are fair, and what a fair rule looks like that a platform team can run on a real fleet.
-We make five contributions.
+This paper is an evaluation of those existing remedies on real workloads. We replay two weeks of Snowflake's public fleet
+trace, Snowset~\cite{snowset}, for every group of warehouses in it that serve the same database, under a billing model we
+validate against Snowflake's own records, and with the effect of warehouse size measured on Snowflake rather than assumed.
+For each group we compare the remedies one at a time and a joint search over all of them, under a latency bound. We ask
+four questions:
 \begin{itemize}
-\item \textbf{Measurement.} On Redset~\cite{redset}, three months of per-user query history from 94 shared Amazon Redshift
-instances (247.8 million queries), replayed under per-second warehouse billing, execution-time attribution leaves a median
-31\% (60\,s auto-suspend) to 56\% (600\,s, Snowflake's default) of the bill unassigned (Section~\ref{sec:e2}). In a live run
-on Snowflake with short queries, the platform's own attribution left 88--93\% unassigned.
-\item \textbf{Fairness properties and failures.} We state three properties a chargeback should satisfy---full recovery, no
-team or group charged above its standalone cost, no bystander penalised for another team's growth---and show, in theory and
-on the fleet, how the common rules violate them (Sections~\ref{sec:rules},~\ref{sec:e3}).
-\item \textbf{A tractable fair rule.} We prove that warehouse billing with \autos{} $\ge$ 60\,s is a coverage game, so its
-Shapley value is in the core, is monotone for bystanders, and is computable exactly by one sweep over query intervals
-(Section~\ref{sec:model}). We also show where the result stops: below 60\,s the game need not be concave, and labels matter. The game theory is
-classical---coverage games and their Shapley values are well understood~\cite{shapley71,littlechild73}---and our contribution
-is to show that a real billing contract is such a game, where it stops being one, and what that means in practice.
-\item \textbf{An engine, validated.} The engine reproduces Snowflake's actual running periods to within 1.2\%, allocates the
-full metered invoice, and runs in about a second per million queries as a single SQL statement in DuckDB
-(Sections~\ref{sec:impl},~\ref{sec:e1}).
-\item \textbf{Who pays more under a fair rule.} Shapley moves cost onto the teams whose short, scattered queries keep the
-warehouse awake, and away from teams whose long queries already account for the time (Section~\ref{sec:who}).
+\item \textbf{RQ1. Where do the savings come from?} Auto-suspend comes first. Against the 600\,s default, tuning it alone
+saves 24\% of billed compute across 134 groups (median group 60\%); the joint search saves 35\%. Resizing almost never pays
+under a latency bound, and the reason follows from how queries scale with size.
+\item \textbf{RQ2. What does consolidation add?} For the median group, nothing. In 21 of 134 groups merging cuts the tuned
+bill by 5--70\%, and those groups hold 98\% of the fleet's consolidation saving; one 17-warehouse group alone holds two
+thirds, and without it consolidation adds 5.5\% of the tuned total.
+\item \textbf{RQ3. When does it pay?} We expected lightly used, idle-heavy warehouses to benefit. The data say the opposite:
+merging pays when members' running periods overlap, because concurrent running time is billed once. We derive this from
+the billing rule, real merges on Snowflake save the predicted amount to within 0.1 points, and a rule on overlap alone reaches a
+leave-one-out balanced accuracy of 0.80.
+\item \textbf{RQ4. How robust are these answers?} They hold under seven changes to the latency bound, concurrency, resume
+delay and size model; greedy search matches exhaustive search in all 42 groups where both can run; and the size model
+predicts held-out sizes far better than the simple alternatives.
 \end{itemize}
-The main fleet experiments were pre-registered before they were run, two deviations are disclosed (Section~\ref{sec:method}),
-and exploratory results are marked as such. Code, results and the pre-registration are public (Section~\ref{sec:artifacts}).
+The study was pre-registered: definitions, options, metrics and sensitivity variants were written down with timestamps
+before the corresponding runs, and every deviation is reported (Section~\ref{sec:prereg}). All code, raw results,
+calibration logs and the plan are public, and one command regenerates every number in this paper
+(Section~\ref{sec:artifacts}). The paper asks only which warehouses should exist, not how the bill of a shared warehouse is
+divided among its users.
 
-\section{Background and Related Work}\label{sec:background}
-\textbf{Warehouse billing.} A Snowflake virtual warehouse is a cluster of fixed size that consumes credits at a size-dependent
-rate while it runs~\cite{snowflake16,sf-warehouses}. Billing is per second with a 60-second minimum each time the warehouse
-starts; it suspends after \autos{} seconds without running queries (default 600\,s)~\cite{sf-create}. On our trial account
-an X-Small Gen2 warehouse consumed 1.35 credits per hour of running time. The same structure---a running resource
-billed by time, with a start-up minimum and an idle timeout---applies to other serverless and provisioned warehouses, which
-is why we can replay Redshift workloads under it.
+\section{Background: How a Warehouse Is Billed}\label{sec:billing}
+A Snowflake virtual warehouse of size $s$ consumes credits at a rate proportional to $s$ while it runs (X-Small $=1$ credit
+per hour, doubling with each size)~\cite{sf-warehouses}. It resumes when a query arrives while it is suspended, keeps
+running while queries execute and for \autos{} $= a$ seconds after the last one ends, and is billed per second with a
+60-second minimum each time it resumes~\cite{sf-create}. Other services bill similar shapes: Databricks SQL warehouses
+accrue charges while idle until an auto-stop timeout~\cite{dbx-warehouse}; Redshift Serverless bills per second with a
+60-second minimum~\cite{rs-serverless}; BigQuery bills autoscaled capacity per second with a one-minute minimum and holds it
+for at least 60 seconds~\cite{bq-autoscale}.
 
-\textbf{Attribution and chargeback in practice.} Per-query attribution answers ``what did this query cost while it ran''; it
-does not answer ``who should pay for the minutes nobody was running anything''. Snowflake's view is explicit that idle time
-is excluded~\cite{sf-attribution}. The FinOps Foundation's framework treats showback as always required and chargeback
-as a formal step whose handling of shared costs the FinOps team and finance must decide together~\cite{finops}; it does not
-say how to split idle time. In practice the gap is filled with tags and proportional allocation of the remainder. We are not aware of a study that measures how large the remainder is
-across a fleet, or whether the proportional rule is fair under the billing contract it is applied to.
+For a warehouse whose queries execute on intervals $[s_q, e_q]$, let its \emph{coverage} be
+$A = \bigcup_q [s_q, e_q + a]$. Each connected component of $A$ is one running period, and the billed time is
+$\sum_C \max(60, |C|)$ over those components. When $a \ge 60$ every component ends with a full tail of at least 60 seconds,
+so the minimum never binds and the billed time is simply $|A|$, the length of the coverage.
 
-\textbf{Cost sharing and the Shapley value.} Shapley's value~\cite{shapley53} is the unique allocation that is efficient,
-symmetric, additive and gives nothing to a team that adds no cost; for concave (submodular) cost games it lies in the
-core~\cite{shapley71}. It has been used for cloud and shared-system pricing before: to price shared indexes and views among
-tenants of a data service~\cite{upadhyaya12}, to attribute a provider's peak-based electricity costs to
-tenants~\cite{nasiriani16}, and to set fees for a shared computer centre modelled as a queue~\cite{mclean98}. Closed forms
-exist for special games, such as the airport game~\cite{littlechild73}, where each player pays an equal share of every
-runway segment it needs; our result is a time-axis analogue. Those works price a provider's costs to its customers. Our
-setting is a customer's internal invoice under a concrete billing contract, evaluated on real fleet traces and validated
-against real metering. Engine-side cost optimisation (e.g., automatic scaling in Redshift~\cite{rais24} and
-cost-intelligent warehouses~\cite{costintel24}) decides how much compute to run; it does not split the resulting bill.
-This paper takes the shared warehouse as given and asks only how its bill is divided, not which warehouses an organisation
-should run.
-
-\section{Billing as a Cost-Sharing Game}\label{sec:model}
-Consider one warehouse of fixed size, auto-suspend $a$ seconds and resume minimum $\mu = 60$\,s, over one billing month.
-A set $N$ of $n$ teams submits $m$ queries; query $q$ executes on $[s_q, e_q]$ and belongs to one team. For a coalition
-$S \subseteq N$, the \emph{standalone cost} $c(S)$ is the billed seconds the warehouse would incur if only $S$'s queries ran,
-with the same timing (assumption A1: removing teams does not change the remaining queries' timing); the warehouse suspends
-exactly $a$ seconds after its last running query (A2). Credits are billed seconds times a size-dependent rate, so we work in
-seconds throughout.
-
-\begin{lemma}[Running periods]\label{lem:periods}
-Let $R(S) = \bigcup_{q \in S} [s_q, e_q + a]$. Under A2, the warehouse's running periods under $S$ are exactly the connected
-components of $R(S)$, and $c(S) = \sum_{C} \max(\mu, |C|)$ over those components.
-\end{lemma}
-\begin{proof}
-Order $S$'s queries by start. The first query resumes the warehouse. Inductively, let the current period have latest
-query end $E$. A query with $s_q \le E + a$ starts before the suspend at $E + a$, so it lies in the same component of $R(S)$
-and moves the end to $\max(E, e_q)$; a query with $s_q > E + a$ starts after the suspend and opens a new component. The last
-period ends at its latest end plus $a$. Each period is billed for its length, but at least $\mu$.
-\end{proof}
-
-\begin{theorem}[Coverage game]\label{thm:coverage}
-If $a \ge \mu$, then $c(S) = \bigl|\bigcup_{i \in S} A_i\bigr|$ with $A_i = R(\{i\})$. Consequently:
-(i) the Shapley value is
-\[\phi_i \;=\; \int_{A_i} \frac{dx}{|N(x)|}, \qquad N(x) = \{\, j \in N : x \in A_j \,\};\]
-(ii) $\phi$ is in the core: $\sum_{i \in S} \phi_i \le c(S)$ for every $S$, with equality for $S = N$;
-(iii) $\phi$ is computable exactly in $O(m \log m)$ time.
-\end{theorem}
-\begin{proof}
-Every component of $R(S)$ ends with a full tail of length $a \ge \mu$, so $|C| \ge \mu$ and the minimum never binds;
-by Lemma~\ref{lem:periods}, $c(S) = |R(S)|$. Since $R(S)$ is a union over queries, $R(S) = \bigcup_{i\in S} R(\{i\})$.
-
-(i) For a point $x$, let $u_x(S) = \mathbf{1}[S \cap N(x) \neq \emptyset]$. Then $c(S) = \int u_x(S)\,dx$. In $u_x$, every
-team outside $N(x)$ is a null player and the members of $N(x)$ are symmetric, so the Shapley value of $u_x$ gives
-$1/|N(x)|$ to each member of $N(x)$ and $0$ to the others. The Shapley value is linear in the game, and the integral is an
-exact finite sum over the elementary segments defined below, on which $u_x$ is constant; hence (i).
-
-(ii) A union-measure function is submodular: for $S \subseteq T$ and $i \notin T$,
-$c(S \cup \{i\}) - c(S) = |A_i \setminus R(S)| \ge |A_i \setminus R(T)| = c(T \cup \{i\}) - c(T)$. A submodular cost game
-is concave, and the Shapley value of a concave cost game lies in its core~\cite{shapley71}.
-
-(iii) Merge each team's query intervals into $A_i$ (sort by start, one pass): $O(m \log m)$. The at most $2m$ endpoints of
-all $A_i$ cut the time axis into elementary segments on which $N(x)$ is constant. One sweep over the sorted endpoints keeps
-the set of covering teams and adds $\ell/|N(x)|$ to each of them for a segment of length $\ell$. Charging a segment touches
-$|N(x)|$ teams, so the sweep is $O(m\log m + \sum_{\text{seg}} |N(x)|) = O(m \log m + mn)$, and $O(m \log m)$ for a fixed
-number of teams. One global prefix sum $G(t) = \int_{-\infty}^{t} \mathbf{1}[N(x)\neq\emptyset]/|N(x)|\,dx$ removes the $n$
-factor: $\phi_i$ is the sum of $G(e) - G(s)$ over the components $[s, e]$ of $A_i$.
-\end{proof}
-
-In words: \emph{each billed second is split equally among the teams whose queries, or whose idle tails, keep the warehouse
-up at that second.} A team pays alone for tails it alone causes and shares the rest.
-
-\textbf{Why Shapley, and not another core allocation?} In a concave game the core is usually large, and other allocations
-in it---the nucleolus, or an egalitarian core allocation---would also satisfy P1 and P2. We choose Shapley for three
-practical reasons. It is the only allocation that is efficient, symmetric, additive and charges nothing to a team that adds
-no cost~\cite{shapley53}; additivity means that the charge for a month is the sum of the charges for its seconds, so
-charges can be computed per day and added up, and audited second by second. It has the closed form above, so it is exact,
-fast, and computable in SQL, while the nucleolus requires a sequence of linear programs over all coalitions and changes
-non-locally when one team's queries change. And it can be explained in one sentence to a finance team, which matters as
-much as any axiom when the charge is disputed.
-
-\begin{proposition}[Bystander monotonicity]\label{prop:bystander}
-If $a \ge \mu$ and team $i$ adds queries, no other team's Shapley charge increases.
+\begin{proposition}[What merging saves]\label{prop:merge}
+Let warehouses $1,\dots,k$ of the same size $s$ have coverages $A_1,\dots,A_k$ at $a \ge 60$, and merge them into one
+warehouse of size $s$ in which every query keeps its timing. The merged warehouse is billed $s\,|\bigcup_i A_i|$, and the
+saving is
+\[ s\Bigl(\sum_i |A_i| - \bigl|\textstyle\bigcup_i A_i\bigr|\Bigr) \;=\; s\int \bigl(n(x) - 1\bigr)^{+}\,dx, \]
+where $n(x)$ is the number of warehouses running at time $x$.
 \end{proposition}
-\begin{proof}
-Adding queries for $i$ can only enlarge $A_i$. For $j \neq i$, $A_j$ is unchanged and $|N(x)|$ can only grow, so
-$\int_{A_j} 1/|N(x)|\,dx$ cannot increase.
-\end{proof}
+\begin{IEEEproof}
+The merged warehouse's coverage is the union of the members' coverages, since it is the union over all their queries. Its
+billed time is that union's length because $a \ge 60$. For each $x$, the separate warehouses bill $n(x)$ seconds and the
+merged one bills $\mathbf{1}[n(x) \ge 1]$; integrating the difference gives the result.
+\end{IEEEproof}
 
-\begin{proposition}[Labels]\label{prop:labels}
-Let $a \ge \mu$. If team $i$ splits its queries under two labels, the two labels together pay at least $\phi_i$; if two
-teams $i, j$ merge their labels, the merged label pays at most $\phi_i + \phi_j$.
-\end{proposition}
-\begin{proof}
-At a point $x$ covered by both parts of $i$, the split parts pay $2/(|N(x)|+1) \ge 1/|N(x)|$; elsewhere nothing changes.
-At a point covered by both $i$ and $j$, the merged label pays $1/(|N(x)|-1) \le 2/|N(x)|$ for $|N(x)| \ge 2$.
-\end{proof}
-Splitting a team's identity never helps it, but two teams can lower their joint charge by sharing a label. Labels must
-therefore be assigned by the platform (Section~\ref{sec:lessons}), not chosen by the teams.
-
-\begin{proposition}[Below the minimum]\label{prop:below}
-If $a < \mu$, the cost game need not be concave.
-\end{proposition}
-\begin{proof}
-Take $a = 30$\,s and one query each for teams 2, 1 and 3 on $[0,10]$, $[40,41]$ and $[70,71]$, so $A_2 = [0,40]$,
-$A_1 = [40,71]$ and $A_3 = [70,101]$. Then $c(\{1\}) = 60$ (a 31-second period billed at the minimum) and
-$c(\{1,3\}) = 61$, so team 3 adds 1 to $\{1\}$; but $c(\{1,2\}) = 71$ and $c(\{1,2,3\}) = 101$, so team 3 adds 30 to the
-larger coalition $\{1,2\}$, violating submodularity.
-\end{proof}
-Snowflake permits \autos{} below 60\,s; its suspend check runs about every 30\,s~\cite{sf-create}. Then short periods are
-billed $\mu$, $c$ is no longer a union measure, and the sweep is not exact; on random instances with $a=0$ it was off by up to
-173\,s. For this case the engine falls back to permutation sampling (Section~\ref{sec:impl}), and the core is no longer
-guaranteed.
+The saving from a merge is exactly the time during which more than one member would be running---their \emph{overlap}. It
+does not depend on how idle the members are: two idle warehouses that take turns have $n(x) \le 1$ everywhere and gain
+nothing, while two busy warehouses that run side by side gain everything they share. Real merges deviate from the
+proposition in two ways, both costs: queries from several members may queue for the merged warehouse's concurrency slots,
+and members of different sizes must move to one rate, usually the largest to keep latency. Figure~\ref{fig:mech} illustrates
+the two extremes. The proposition makes a prediction the rest of the paper tests: on the real fleet, the saving of every
+merge should equal its members' overlap, net of the rate change (Figure~\ref{fig:mtest}, Section~\ref{sec:rq3}), and a real merge on Snowflake should save it (Section~\ref{sec:merge}).
 
 \begin{figure}[t]
-\includegraphics[width=\columnwidth]{figs/example.pdf}
-\caption{Worked example, \autos{} 60\,s. Top rows: each team's queries (solid) and tails (light). Bottom row: the Shapley
-split; each elementary segment is divided equally among the teams covering it (labels: length / number of teams).}
-\label{fig:example}
+\centering\includegraphics[width=\columnwidth]{figs/mechanism.pdf}
+\caption{Why overlap decides. Solid: queries; light: 60\,s auto-suspend tails; grey: billed periods if merged. When two
+warehouses run at the same time, merging bills the shared seconds once; when they take turns, merging saves nothing that a
+short timeout has not already removed.}\label{fig:mech}
 \end{figure}
 
-\subsection{A worked example}\label{sec:example}
-Figure~\ref{fig:example} shows three teams on one warehouse with \autos{} 60\,s: a dashboard team runs three 2-second
-queries at 0, 100 and 200\,s; a batch team runs one query from 30 to 150\,s; an ad hoc team runs one 2-second query at
-400\,s. The warehouse is billed 324\,s in two periods, of which only 126\,s have a query running. Table~\ref{tab:example}
-lists each rule's charges. Proportional splitting charges the batch team 306\,s, far above the 180\,s its own warehouse
-would cost, because the remainder follows execution time while the idle tails come from the dashboard team's scattered
-queries. Equal and marginal splitting charge the ad hoc team more than its own 62\,s. Shapley charges the ad hoc team exactly
-its standalone cost---no one else is up at 400\,s---and splits the first period by who is up when.
+\section{Related Work}
+\textbf{Resource scaling inside the engine.} Cloud warehouses increasingly decide how much compute to run on the customer's
+behalf. Amazon Redshift scales clusters with learned workload models~\cite{rais24}; ScaleSense estimates per-query resources
+to scale Alibaba AnalyticDB cost-effectively~\cite{scalesense26}; and the cost-intelligence vision proposes that users state
+budgets instead of sizes~\cite{costintel24}. These systems operate inside one service on one workload. Our question is the
+customer's: how many warehouses to run, and which workloads to put together, under the billing contract as it stands.
 
-\begin{table}[t]
-\caption{Charges (billed seconds) in the worked example. Bold: above the team's standalone cost.}\label{tab:example}
-\small
-\begin{tabular}{lrrrrrr}
-\toprule
-Team & standalone & R1 & R2 & R3 & R4 & R5 \\
-\midrule
-Dashboard & 186 & 5   & 12.9 & 108 & 120.8 & 134 \\
-Batch     & 180 & 119 & \textbf{306.0} & 108 & 111.9 & 128 \\
-Ad hoc    & 62  & 2   & 5.1  & \textbf{108} & \textbf{91.3} & 62 \\
-\midrule
-Total     & 324 & 126 & 324 & 324 & 324 & 324 \\
-\bottomrule
-\end{tabular}
-\end{table}
+\textbf{Fleet traces.} Snowset~\cite{snowset} and Redset~\cite{redset} released query-level metadata from production fleets
+and have been used to characterise workloads---elasticity, repetition, the gap between benchmarks and real queries. To our
+knowledge neither has been used to evaluate customer-side layout decisions. Snowset's warehouse and database identifiers
+make that possible.
 
-\subsection{Fairness properties and the rules we compare}\label{sec:rules}
-A chargeback assigns each team $i$ a charge $x_i$. We ask for:
-\textbf{(P1) recovery}, $\sum_i x_i$ equals the invoice;
-\textbf{(P2) standalone bound}, $\sum_{i \in S} x_i \le c(S)$ for every coalition $S$---no team or group pays more than its
-own warehouse would have cost (the core); and
-\textbf{(P3) bystander monotonicity}, if one team adds work, no other team's charge rises.
-We also look informally at \textbf{responsiveness}: whether the split follows who keeps the warehouse running.
-We compare five rules:
-\textbf{R1} execution-time attribution (each second with queries running is split equally among them; idle time is left
-unassigned---native attribution weights by resource use, which traces do not record);
-\textbf{R2} R1 plus the remainder in proportion to R1 (proportional);
-\textbf{R3} equal split;
-\textbf{R4} leave-one-out marginal cost $c(N) - c(N\setminus\{i\})$, rescaled to the invoice;
-\textbf{R5} Shapley (Theorem~\ref{thm:coverage}).
+\textbf{Database consolidation.} Kairos~\cite{kairos11} consolidates many database workloads onto fewer servers by
+predicting their combined resource use, and multi-tenant database services place tenants on servers to meet performance
+objectives at low cost~\cite{lang14}. Both minimise the hardware needed for a set of workloads, a capacity objective. Under
+per-second warehouse billing the customer pays for running time, not capacity, so the objective changes: a merge saves the
+seconds during which members would run concurrently (Proposition~\ref{prop:merge}), and two workloads that fit easily on
+one server gain nothing if they never run at the same time.
 
-Table~\ref{tab:props} summarises which properties each rule guarantees when $a \ge \mu$. R1 meets P2 trivially because it
-assigns only execution time, but fails P1. R2 fails P2 (Table~\ref{tab:example}) and P3: a team that adds one isolated
-1-second query raises the bill by 61\,s but its execution share by only 1\,s, so everyone else's proportional charge rises.
-R3 fails both, since any growth that raises the bill raises everyone's equal share. R4 fails P2 after rescaling (Table~\ref{tab:example}) and P3. Its
-failure of P3 comes from the rescaling alone: another team's growth can only shrink a bystander's raw marginal cost, but it can
-shrink the sum of marginals faster, which raises the factor that scales every marginal up to the invoice. R5 meets all three
-(Theorem~\ref{thm:coverage}, Proposition~\ref{prop:bystander}). All five rules are cheap: R1, R2 and R5 need one sweep,
-$O(m \log m)$; R4 needs $n$ leave-one-out coalition costs, $O(nm)$ after sorting.
+\textbf{VM consolidation.} Server and virtual-machine consolidation packs workloads onto fewer hosts to save energy under
+capacity constraints~\cite{beloglazov12}. There, the saving comes from capacity: fewer machines powered on. In a
+per-second-billed warehouse the saving comes from time---seconds that several warehouses would each have been billed for
+(Proposition~\ref{prop:merge})---so the question of \emph{which} workloads to merge has a different answer, and our results
+show that idleness, the natural signal for VM consolidation, is the wrong one here.
 
-\begin{table}[t]
-\caption{Properties guaranteed when \autos{} $\ge$ 60\,s.}\label{tab:props}
-\small
-\begin{tabular}{lccccc}
-\toprule
-Property & R1 & R2 & R3 & R4 & R5 \\
-\midrule
-P1 recovery            & \no  & \yes & \yes & \yes & \yes \\
-P2 standalone bound    & \yes & \no  & \no  & \no  & \yes \\
-P3 bystander monotone  & \yes & \no  & \no  & \no  & \yes \\
-\bottomrule
-\end{tabular}
-\end{table}
+\textbf{Practitioner guidance.} Vendor guidance discusses auto-suspend settings and warehouse sizing~\cite{sf-considerations}.
+We found no fleet-scale measurement of either remedy, or of consolidation, and no published rule for when to merge.
 
-\section{Implementation: the Chargeback Engine}\label{sec:impl}
-The engine takes a warehouse's query history (team label, execution start and end) and its \autos{}, and produces per-team
-charges that sum to the metered invoice. Algorithm~\ref{alg:engine} shows the steps. Coalition costs never touch raw queries
-again after step~1, which keeps every rule linear-logarithmic in the number of queries.
+\section{Study Design}\label{sec:design}
+\subsection{Data and groups}
+Snowset~\cite{snowset} records 69.2 million queries from 2,051 warehouses over 14 days in 2018. For each query it gives the
+warehouse id, warehouse size and database id, and the execution time; it does not identify the customer. As a same-customer
+proxy, a \emph{candidate group} is two or more warehouses that each touch exactly one database, the same one, and keep one
+size for the whole trace. There are 134 such groups with 388 warehouses and 18.6 million queries. Most are small (89 pairs,
+22 triples, 18 groups of four to six and 5 of seven or more), sizes range from X-Small to 4X-Large, and the groups are mostly
+light: the median group runs 3,345 queries in two weeks and would be billed 128 credits at default settings, while the
+largest runs 7.5 million queries. A query occupies its warehouse during $[\text{end} - \text{execution time},\ \text{end}]$.
+
+\subsection{Replay}
+The replay re-runs each warehouse's queries on a simulated warehouse of a chosen size and timeout
+(Algorithm~\ref{alg:replay}). A query arrives at its observed execution start, which folds the original queueing into the
+arrival. Its execution time is rescaled to the replayed size by $t' = t\,(s/s')^{\alpha(c)}$, where $c$ is a class by
+run time at the original size ($<1$\,s, 1--10\,s, 10--60\,s, $>60$\,s) and $\alpha$ is measured on Snowflake
+(Section~\ref{sec:calib}). Each warehouse has eight concurrent slots, Snowflake's default concurrency level, served
+first-come first-served. The first query after a suspend waits a one-second resume delay, which is billed. Billing follows
+Section~\ref{sec:billing} exactly.
 
 \begin{algorithm}[t]
-\caption{Chargeback for one warehouse and one billing period}\label{alg:engine}
+\caption{Replay of one (merged) warehouse}\label{alg:replay}
 \small
 \begin{algorithmic}[1]
-\Require queries $(i, s, e)$; auto-suspend $a$; metered invoice $I$ (seconds)
-\State $A_i \gets$ merge $\{[s, e+a]\}$ of team $i$ \Comment{per team, sort + one pass}
-\State $B \gets \sum_{C \in \text{comp}(\cup_i A_i)} \max(\mu, |C|)$ \Comment{modelled bill (Lemma~\ref{lem:periods})}
-\State \textbf{reconcile:} compare components of $\cup_i A_i$ with the platform's resume/suspend events; flag mismatches
-\If{$a \ge \mu$} \State $\phi \gets$ sweep over endpoints of all $A_i$ (Theorem~\ref{thm:coverage}(iii))
-\Else \State $\phi \gets$ mean marginal cost over 2,000 random team orders
-\EndIf
-\State \Return $x_i = \phi_i \cdot I / B$ \Comment{scale to the metered invoice}
+\Require queries $(\text{arrival}, t, s_{\text{orig}})$; size $s'$; timeout $a$; slots $K=8$; resume delay $r=1$\,s
+\State $\textit{free} \gets$ $K$ slots free at $-\infty$; $\textit{up} \gets -\infty$ \Comment{warehouse up until}
+\For{each query in order of arrival}
+  \State $\textit{start} \gets \max(\text{arrival}, \text{earliest free slot})$
+  \If{$\textit{start} > \textit{up}$} $\textit{start} \gets \textit{start} + r$ \Comment{resume, billed} \EndIf
+  \State $\textit{end} \gets \textit{start} + t\,(s_{\text{orig}}/s')^{\alpha(c)}$; occupy the slot until \textit{end}
+  \State $\textit{up} \gets \max(\textit{up}, \textit{end} + a)$; latency $\gets \textit{end} - \text{arrival}$
+\EndFor
+\State \Return billed seconds $\sum_C \max(60, |C|)$ over running periods; latencies
 \end{algorithmic}
 \end{algorithm}
 
-\textbf{One SQL statement.} Because the rule only needs interval merging and a sweep, it can run where the query history
-already lives. Figure~\ref{lst:sql} computes $\phi$ in SQL with cumulative window functions only: a gaps-and-islands pass
-merges each team's intervals into $A_i$; a running sum over the $\pm1$ endpoint events gives $|N(x)|$ on each elementary
-segment; a second running sum gives the prefix $G$; and each team is charged $G(e) - G(s)$ over its components
-(Theorem~\ref{thm:coverage}(iii)). There is no range join, so the cost is a few sorts. On 500 random instances, including
-ties and zero-length queries, its charges matched the Python sweep to within $2\times10^{-12}$\,s and brute-force Shapley to
-within $10^{-12}$\,s. On synthetic months with one million queries, ten teams and exponential run times it took 0.83\,s
-($a=600$) and 1.08\,s ($a=60$, with many more components) in DuckDB on one core, and about 0.6\,s on four. We also ran the listing, exactly as printed, inside Snowflake on
-the X-Small warehouse of our live run (Section~\ref{sec:method}). Over that run's own query history it matched the Python
-sweep to within $3\times10^{-13}$\,s at both settings. On a one-million-row synthetic month generated in Snowflake it took
-1.0\,s at $a = 600$ and 3.5\,s at $a = 60$, end to end on the smallest warehouse size.
+\subsection{Options and search}
+For each group we compare five options:
+(i) \emph{as-is}: every warehouse at its size with \autos{} 600\,s (Snowflake's default; we also report 60 and 300\,s);
+(ii) \emph{resize only}: each warehouse at half, the same or double its size;
+(iii) \emph{tune auto-suspend only}: each warehouse at 60, 300 or 600\,s;
+(iv) \emph{consolidate all}: all members in one warehouse, at the best feasible size and timeout;
+(v) the \emph{joint search} over partitions of the group into warehouses, a size for each (half, same or double any
+member's size) and a timeout (60, 300 or 600\,s).
+Every option must keep each original warehouse's 95th-percentile latency within 1.2$\times$ its as-is value. The joint
+search enumerates all set partitions for groups of up to four warehouses (Bell(4)~$=15$ partitions) and otherwise merges
+greedily, starting from separate warehouses and repeatedly applying the pairwise merge with the largest saving until none
+saves money; 13 of the 134 groups use the greedy path. ``Best single knob'' is the cheaper of options (ii) and (iii);
+the \emph{extra saving} from consolidation is $1 - \text{joint}/\text{best single knob}$. Consolidation \emph{pays} in a
+group when the joint plan merges warehouses, its extra saving exceeds 5\%, and it saves at least one credit over the two
+weeks. The last two conditions exclude groups whose bill is so small that 5\% is noise; the first excludes groups where the
+joint search wins only by changing size and timeout together, which neither single knob does (Section~\ref{sec:prereg}).
+Across all groups without a merge, that effect totals 0.5 credits, so the extra saving is consolidation's saving in all but
+name.
+
+\subsection{Features and rule}
+To explain when consolidation pays, we compute eleven group features from query history alone at 60\,s auto-suspend:
+group size, spread of member sizes, total credits, and the mean and minimum over members of utilisation, resumes per day,
+idle share of billed time, and \emph{overlap}---the share of a member's running periods that intersect any other member's
+running period. We report tie-corrected Spearman correlations with the extra saving and fit a depth-2 decision tree
+(minimum leaf size 5) for ``pays'', evaluated by leave-one-out cross-validation with balanced accuracy.
+
+\subsection{Pre-registration and deviations}\label{sec:prereg}
+The group definition, options, latency bound, replay parameters, size-model protocol, features, rule search and the seven
+sensitivity variants were written down with timestamps before the corresponding runs. Our stated expectation, written
+before any feature was computed, was that consolidation would pay ``when members are lightly used, resume often, have high
+idle-tail share, low overlap, similar size''. The data contradict it on overlap, idle share and size, and resume frequency
+does not matter (Section~\ref{sec:rq3}). The timestamps are the authors' own, recorded in the plan; they were not lodged with an
+external registry. The public repository was published after the main study, so its history starts then; the two
+additions after publication (a week-1/week-2 test of the rule and a real merge on Snowflake) were pushed to it before
+they were run. The plan was first written for the industry track under a
+working title; a dated addendum records the change to this track. We disclose nine deviations; the repository maps each to
+its dated entry in the plan. (1)~The analysis keeps the 134 frozen groups although the runner also produced 21 groups after
+dropping size-changing members. (2)~The 5\% threshold for ``pays'' was fixed after the main run; Section~\ref{sec:rq4} shows
+the rule at 3\% and 10\%. (3)~An independent review found that the pre-registered analysis compared every option only on
+groups where \emph{all} options were feasible, which dropped three groups (9, 17 and 2 warehouses) where consolidating
+everything breaks the latency bound---including the group with the largest consolidation saving. We compare as-is,
+single-knob and joint options on all 134 groups and report consolidate-all on the 131 where it is feasible; on the old
+131-group set, auto-suspend saved 32\%, the joint search 37\%, and consolidation added 7.7\%. (4)~Our first rank correlation
+did not average tied ranks; we report tie-corrected values. (5)~The SF100 size-scaling runs were added after the first
+block showed every original statement finishing in under 3\,s at X-Small. (6)~The pre-registered comparison of greedy
+against exhaustive search and the size model's held-out error were computed only after review, and the exhaustive check was then extended from groups of three or four warehouses to groups
+of five to eight by caching each block's best cost; all are reported in Section~\ref{sec:rq4}. (7)~A second review found that the original definition of ``pays'' (extra saving above 5\% alone)
+counted three groups that merge nothing and three that save under one credit; we tightened it as stated in
+Section~\ref{sec:design}. Under the original definition 27 groups pay and the rule's leave-one-out balanced accuracy is
+0.76; every other conclusion is unchanged. (8)~A third review asked whether the rule predicts the future; the week-1 to
+week-2 test (Section~\ref{sec:rq3}) was added and written down, with its expected outcome, before it was run, and pushed to
+the public repository with the plan. (9)~The real merge on Snowflake (Section~\ref{sec:merge}) was added the same way; a
+session timeout cut three of its statements (reported there), and the analysis script's first event filter matched no
+events and was fixed before any metered number was read. Analyses marked \emph{exploratory} were not pre-registered.
+
+\section{Calibration on Snowflake}\label{sec:calib}
+\subsection{Is the billing model right?}
+On a dedicated X-Small Generation~2 warehouse we issued short probe statements separated by gaps chosen around the timeout
+(20 to 600\,s), at \autos{} 300\,s and then 60\,s, and compared the model's running periods, computed from the probes'
+execution intervals in \texttt{QUERY\_HISTORY}, with the warehouse's own resume and suspend records in
+\texttt{WAREHOUSE\_EVENTS\_HISTORY}. We ran this check on a warehouse of its own, independently of any other experiment.
+Table~\ref{tab:f1} gives the result period by period. The model found every running period, and every modelled period is
+0.3--1.3\,s shorter than the actual one; the difference is the resume itself, which starts 0.2--1.0\,s before the first
+query executes. Over each phase the model reproduces 99.8\% (300\,s) and 99.4\% (60\,s) of the running time, and the
+warehouse suspended a median 300.5\,s and 60.1\,s after its last query. The metered rate was 1.35 credits per running hour;
+the replay bills X-Small at one credit per hour, which scales every bill equally and leaves percentages unchanged.
+
+One case is instructive. An administrator's session ran metadata statements (\texttt{GRANT}, \texttt{SHOW}) on the warehouse
+during the 60\,s phase. Snowflake logs them in \texttt{QUERY\_HISTORY} with the warehouse's name, but runs them in its
+cloud-services layer without keeping the warehouse up; counting them as warehouse work would overstate running time by 8\%.
+A running-time model built from query history must exclude such statements.
+
+\begin{table}[t]
+\caption{Billing model vs.\ Snowflake's resume/suspend records, period by period (dedicated X-Small warehouse). Lengths in
+seconds; start relative to the phase's first resume.}\label{tab:f1}
+\centering\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{rrrrrr}
+\toprule
+\autos & start & probes & model & actual & model$-$actual \\
+\midrule
+300\,s & 0     & 3 & 701.5 & 702.4 & $-1.0$ \\
+       & 733   & 1 & 300.3 & 301.6 & $-1.3$ \\
+       & 1335  & 3 & 703.5 & 704.2 & $-0.8$ \\
+       & 2071  & 1 & 300.4 & 301.2 & $-0.8$ \\
+\midrule
+60\,s  & 0     & 3 & 125.8 & 126.1 & $-0.4$ \\
+       & 142   & 1 & 60.3  & 60.7  & $-0.3$ \\
+       & 263   & 1 & 60.5  & 60.8  & $-0.3$ \\
+       & 504   & 3 & 126.2 & 127.1 & $-1.0$ \\
+       & 647   & 1 & 60.6  & 61.0  & $-0.4$ \\
+       & 768   & 1 & 60.6  & 61.1  & $-0.5$ \\
+       & 1010  & 1 & 60.5  & 60.8  & $-0.3$ \\
+\midrule
+\multicolumn{3}{l}{Total, 300\,s / 60\,s (ratio)} & \multicolumn{3}{r}{0.998 / 0.994} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{How does run time scale with size?}
+On a second dedicated Generation~2 warehouse (query acceleration off) we ran 12 statements on our own TPC-H-style
+schema and 6 TPC-H statements on Snowflake's SF100 sample data at X-Small, Small and Medium, in ABBA order (XS, S, M, M, S,
+XS), three repetitions each with the first after every resize discarded, and took execution times from Snowflake's own
+records. For each statement and larger size, $\alpha = \log(t_{XS}/t_{s})/\log(s)$; $\alpha$ for a class is the median over
+its statements (Table~\ref{tab:alpha}). Sub-second statements barely speed up ($\alpha = 0.34$); 1--10\,s statements
+scale sub-linearly ($0.75$); 10--60\,s statements almost linearly ($0.96$). No statement exceeded 60\,s, so the longest class
+borrows the 10--60\,s value. Individual sub-second statements scatter widely, from $\alpha = -0.26$ (slower on a larger
+warehouse) to $1.02$, which is why the sensitivity study varies $\alpha$ by $\pm20\%$.
+
+\begin{table}[t]
+\caption{Size scaling measured on Snowflake: median execution times (s) and per-statement $\alpha$ for Small and Medium
+against X-Small; class $\alpha$ is the median within the class.}\label{tab:alpha}
+\centering\scriptsize
+\setlength{\tabcolsep}{2.8pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Statement & data & XS & S & M & $\alpha_S$ & $\alpha_M$ \\
+\midrule
+\multicolumn{7}{l}{\emph{Class $<1$\,s: class $\alpha = 0.34$}} \\
+point probe        & TPCH10 & 0.05 & 0.04 & 0.04 & 0.34 & 0.23 \\
+part--supp cross   & TPCH10 & 0.06 & 0.05 & 0.06 & 0.34 & $-0.07$ \\
+top suppliers      & TPCH10 & 0.15 & 0.13 & 0.21 & 0.13 & $-0.26$ \\
+order priority     & TPCH10 & 0.27 & 0.20 & 0.17 & 0.40 & 0.33 \\
+Q6 forecast        & SF100  & 0.31 & 0.18 & 0.15 & 0.76 & 0.55 \\
+pricing summary    & TPCH10 & 0.33 & 0.16 & 0.14 & 1.02 & 0.61 \\
+shipping priority  & TPCH10 & 0.43 & 0.27 & 0.26 & 0.69 & 0.36 \\
+distinct parts     & TPCH10 & 0.61 & 0.49 & 0.37 & 0.32 & 0.37 \\
+revenue by nation  & TPCH10 & 0.69 & 0.49 & 0.46 & 0.49 & 0.29 \\
+part-type profit   & TPCH10 & 0.69 & 0.67 & 0.64 & 0.04 & 0.05 \\
+\multicolumn{7}{l}{\emph{Class 1--10\,s: class $\alpha = 0.75$}} \\
+top customers      & TPCH10 & 1.16 & 0.94 & 0.77 & 0.31 & 0.30 \\
+window rank        & TPCH10 & 1.65 & 0.95 & 0.50 & 0.80 & 0.86 \\
+self join          & TPCH10 & 2.28 & 1.36 & 0.79 & 0.74 & 0.77 \\
+Q3 shipping        & SF100  & 2.54 & 1.63 & 1.26 & 0.64 & 0.51 \\
+Q1 pricing         & SF100  & 4.93 & 2.54 & 1.37 & 0.96 & 0.92 \\
+distinct supp--part& SF100  & 6.13 & 4.09 & 2.03 & 0.58 & 0.80 \\
+\multicolumn{7}{l}{\emph{Class 10--60\,s: class $\alpha = 0.96$ (also used for $>60$\,s)}} \\
+Q18 large volume   & SF100  & 13.60 & 6.97 & 3.67 & 0.97 & 0.95 \\
+top customers      & SF100  & 20.67 & 13.12 & 5.04 & 0.66 & 1.02 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{How good is the model?} Predicting each of the 36 observations from its X-Small time and its class's $\alpha$ has a
+median error of 12.4\% (90th percentile 44\%). Held out by size, fitting $\alpha$ on Medium and predicting Small gives a
+median error of 12.4\%, and fitting on Small and predicting Medium 24.8\%. The two simple alternatives do much worse:
+assuming no speed-up errs by a median 60\%, and assuming linear speed-up by 35\%.
+
+\subsection{Does a real merge save what the replay predicts?}\label{sec:merge}
+The checks above validate one warehouse at a time. The paper's subject is merging, so we also merged warehouses on
+Snowflake. From the trace we took 90-minute windows of three same-size warehouse pairs, chosen by a rule fixed in the plan
+before any run: the window with the highest predicted saving among groups where consolidation pays (\emph{high overlap}),
+one in a different such group whose predicted saving is closest to 20\% (\emph{partial overlap}), and the window with the
+largest bills among those predicted to save nothing (\emph{turn-taking}). Each pair ran at X-Small with \autos{} 60\,s on
+three dedicated warehouses at the same time---member A alone, member B alone, and both merged---with every statement
+replaced by \texttt{GENERATOR(TIMELIMIT~$\Rightarrow$~$d$)} of the trace duration $d$, sent at its trace offset (1,096
+statements; median 0.1\,s late). The replay's predictions were recorded and pushed to the public repository before the run.
+
+Figure~\ref{fig:mergesf} shows Snowflake's metered credits. Merging the high-overlap pair saved 49.8\% (predicted
+49.8\%), the partial-overlap pair 20.1\% (predicted 20.0\%), and the turn-taking pair 0.0\% (predicted 0.0\%): the saving
+is the overlap, as Proposition~\ref{prop:merge} says, and two warehouses that take turns gain nothing from sharing even
+though each is idle half the time. Run concurrently and merged, the billing model's running time on the executed
+statements matched Snowflake's resume and suspend records to within 0.31\% on all nine warehouses, and the implied rate
+was the same on all nine (1.35--1.36 credits per running hour). One deviation: a session timeout of 300\,s cut three
+turn-taking statements longer than that, equally on their own and on the merged warehouse, so that pair billed 75 rather
+than 83 minutes; the comparison is unaffected.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/merge_sf.pdf}
+\caption{A real merge on Snowflake: metered credits of two warehouses run separately and of the same statements on one
+merged warehouse (X-Small, \autos{} 60\,s, 90 minutes each), with the saving the replay predicted before the run.}\label{fig:mergesf}
+\end{figure}
+
+\section{Results}
+\subsection{RQ1: Where do the savings come from?}\label{sec:rq1}
+Figure~\ref{fig:savings} shows the billed compute each option saves relative to default settings across the 134 groups
+(127,018 credits over two weeks at the replay's rate). Tuning auto-suspend saves 23.7\%; the joint search saves 35.0\%.
+Per group, the median saving is 60\% for tuned auto-suspend and 61\% for the joint search, and Figure~\ref{fig:cdf} shows
+that the two distributions nearly coincide: for most groups, the joint search's choice is simply a shorter timeout. In
+every one of the 253 warehouses or merged warehouses in the joint plans, the search picks the shortest timeout we allowed,
+60\,s.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/f3_savings.pdf}
+\caption{Billed compute saved relative to default settings (\autos{} 600\,s), 134 groups, two weeks.
+$^*$Consolidate-all: the 131 groups where it meets the latency bound.}\label{fig:savings}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/f3_cdf.pdf}
+\caption{Per-group saving relative to default settings, 134 groups. The two curves nearly coincide: for most groups the
+joint search adds little to tuning auto-suspend; the gap opens only in the few groups where consolidation pays.}\label{fig:cdf}
+\end{figure}
+
+\textbf{What drives the auto-suspend saving? (exploratory)} Across groups, the saving from tuning auto-suspend rises with the members'
+idle share of billed time (Spearman $+0.68$) and falls with the group's total credits ($-0.75$), its utilisation ($-0.42$)
+and its overlap ($-0.57$): the light, idle, turn-taking groups that make up most of the fleet are exactly the ones a short
+timeout helps most. Figure~\ref{fig:turns} shows a typical pair. Warehouse B runs short queries in regular bursts (19,450 queries over six
+days); warehouse A runs a few dozen queries a day (229 in all). At the 600\,s default the two would run 51.0 hours over the trace, of which merging would save
+1.0 hour (2\%); at 60\,s they run 21.8 hours separately and 21.7 merged. Tuning removes 57\% of the bill; merging, almost
+nothing.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/turns.pdf}
+\caption{A typical idle pair, twelve hours: running periods at the 600\,s default (top) and at 60\,s (bottom). The two
+warehouses take turns, so a short timeout removes most of the bill and merging removes almost none of what is left.}\label{fig:turns}
+\end{figure}
+
+\textbf{Resizing almost never pays.} Resizing alone saves under 0.1\% and is strictly cheaper in only three groups. This
+follows from the measured size model and the latency bound rather than being a separate discovery. Halving a warehouse
+slows sub-second queries by $2^{0.34} = 1.27\times$, past the 1.2$\times$ bound. Doubling it costs twice the rate per
+second; with $\alpha$ near 1 for long queries the run is twice as fast, so the cost per query is unchanged, and with
+$\alpha = 0.34$ for short ones the run is only 21\% faster, so the cost rises.
+
+\textbf{Merging everything is harmful.} Consolidating every group into one warehouse, at its best size and timeout, is
+infeasible in three groups and saves only 1.6\% in total on the other 131, although its per-group median is 52.5\%: it costs
+more than tuning auto-suspend alone in 68 of 131 groups and more than the default settings in 19. A merged warehouse
+queues, and a group with members of different sizes must run at the largest rate.
+
+\textbf{What if timeouts are already short?} Snowset records no suspend settings, so the as-is timeout is an assumption,
+and it decides how much tuning can save (Figure~\ref{fig:asis}). Against an as-is timeout of 600\,s the joint search saves
+35.0\% in total and a median 61\% per group; against 300\,s, 28.0\% and 46\%; against 60\,s, 14.8\% and 0\%. With 60\,s
+already in place, tuning has nothing left to remove---in no group was a longer timeout cheaper---and the remaining 14.8\% is
+consolidation alone, concentrated in the same few groups. The consolidation result therefore does not depend on the
+assumption; the auto-suspend result does.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/asis.pdf}
+\caption{Total saving of tuning auto-suspend and of the joint search against three assumed as-is timeouts (134 groups).
+With 60\,s already in place, only consolidation is left to save.}\label{fig:asis}
+\end{figure}
+
+\textbf{By group size (exploratory).} Table~\ref{tab:byk} breaks the savings down by the number of warehouses in a group. Tuning
+auto-suspend saves the most in pairs and triples and the least in the largest groups, whose warehouses are busier (median utilisation 32\% for groups of seven or more, against 3\% for pairs). Consolidation
+grows with group size: it adds 3\% of the tuned bill for pairs, 6\% for triples, 10\% for groups of four to six and 26\% for
+the five groups of seven or more.
+
+\begin{table}[t]
+\caption{Savings by group size. Suspend and joint: \% of default bill; consol.: extra saving of the joint search as \% of
+the best single-knob bill; pays: groups where consolidation pays.}\label{tab:byk}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+Warehouses & groups & wh. & suspend & joint & consol. & pays \\
+\midrule
+2       & 89 & 178 & 35.6\% & 37.5\% & 3.0\%  & 7 \\
+3       & 22 & 66  & 46.0\% & 49.4\% & 6.3\%  & 5 \\
+4--6    & 18 & 85  & 24.4\% & 32.3\% & 10.4\% & 5 \\
+7+      & 5  & 59  & 6.4\%  & 30.6\% & 25.9\% & 4 \\
+\midrule
+All     & 134 & 388 & 23.7\% & 35.0\% & 14.8\% & 21 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{RQ2: What does consolidation add?}\label{sec:rq2}
+Relative to the best single knob, the joint search adds a median of 0\% (interquartile range 0--2.2\%) and 14.8\% of the
+total. It merges warehouses in 83 groups, but consolidation pays in only 21; where it does, it cuts the group's best single-knob
+bill by 5.1--70.3\% (median 12.3\%). It forms 91 merged warehouses, 69 of them pairs. Table~\ref{tab:pays} lists all 21
+groups.
+
+\begin{table*}[t]
+\caption{All 21 groups where consolidation pays (a merge, extra saving $>5\%$ and at least one credit saved), ordered by
+credits saved. Sizes in credits per hour;
+best: cheaper of resize-only and suspend-only; joint: joint search (credits, two weeks); share: of the fleet's total
+consolidation saving; overlap: mean overlap of members' running periods; flagged: overlap $>0.617$, the rule of Section~\ref{sec:rq3} (overlap shown to two decimals; row~7 is 0.621); merged: number of
+members in each merged warehouse of the joint plan.}\label{tab:pays}
+\centering\scriptsize
+\setlength{\tabcolsep}{4.2pt}
+\begin{tabular}{rrlrrrrrrcl}
+\toprule
+\# & $k$ & sizes & queries & best & joint & extra & share & overlap & flagged & merged \\
+\midrule
+1 & 17 & 1--8 & 3{,}712{,}733 & 13{,}995 & 4{,}156 & 70.3\% & 68.5\% & 1.00 & \checkmark & 3 + 6 + 8 \\
+2 & 6 & 4,8,8,16,32,64 & 329{,}968 & 10{,}994 & 8{,}476 & 22.9\% & 17.5\% & 1.00 & \checkmark & 4 \\
+3 & 6 & 2,4,4,8,8,8 & 181{,}535 & 2{,}992 & 2{,}557 & 14.5\% & 3.0\% & 1.00 & \checkmark & 6 \\
+4 & 3 & 1,1,2 & 632{,}030 & 948 & 638 & 32.7\% & 2.2\% & 1.00 & \checkmark & 3 \\
+5 & 4 & 8,8,16,32 & 48{,}930 & 3{,}916 & 3{,}690 & 5.8\% & 1.6\% & 0.74 & \checkmark & 2 \\
+6 & 2 & 2 (all) & 238{,}553 & 832 & 640 & 23.1\% & 1.3\% & 1.00 & \checkmark & 2 \\
+7 & 3 & 4,4,8 & 16{,}628 & 488 & 363 & 25.7\% & 0.9\% & 0.62 & \checkmark & 2 \\
+8 & 5 & 1,1,1,4,4 & 1{,}225{,}708 & 1{,}075 & 975 & 9.3\% & 0.7\% & 0.89 & \checkmark & 2 + 2 \\
+9 & 2 & 2,8 & 8{,}931 & 1{,}084 & 1{,}016 & 6.3\% & 0.5\% & 0.75 & \checkmark & 2 \\
+10 & 18 & 32 (all) & 1{,}012 & 222 & 161 & 27.5\% & 0.4\% & 0.67 & \checkmark & 2 + 2 + 4 + 3 + 2 + 3 \\
+11 & 7 & 1--8 & 77{,}094 & 442 & 386 & 12.7\% & 0.4\% & 0.96 & \checkmark & 6 \\
+12 & 3 & 1 (all) & 11{,}460 & 85.9 & 52.4 & 39.0\% & 0.2\% & 0.67 & \checkmark & 3 \\
+13 & 2 & 1 (all) & 376{,}546 & 228 & 196 & 13.9\% & 0.2\% & 0.48 &  & 2 \\
+14 & 2 & 4 (all) & 20{,}985 & 386 & 358 & 7.3\% & 0.2\% & 0.36 &  & 2 \\
+15 & 3 & 4,8,8 & 5{,}335 & 249 & 225 & 9.9\% & 0.2\% & 0.81 & \checkmark & 2 \\
+16 & 2 & 4 (all) & 11{,}246 & 148 & 130 & 12.3\% & 0.1\% & 0.33 &  & 2 \\
+17 & 8 & 1--4 & 32{,}582 & 181 & 164 & 9.3\% & 0.1\% & 0.68 & \checkmark & 4 \\
+18 & 2 & 1 (all) & 41{,}773 & 79.7 & 75.2 & 5.6\% & 0.0\% & 0.29 &  & 2 \\
+19 & 2 & 1 (all) & 3{,}321 & 32.0 & 29.4 & 8.2\% & 0.0\% & 0.34 &  & 2 \\
+20 & 4 & 1,4,4,4 & 7{,}179 & 50.5 & 47.9 & 5.1\% & 0.0\% & 0.34 &  & 2 \\
+21 & 3 & 1 (all) & 7{,}295 & 27.3 & 25.2 & 7.5\% & 0.0\% & 0.66 & \checkmark & 3 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\textbf{How much rests on one group?} Much of it. One group accounts for 68.5\% of the consolidation saving and another
+for 17.5\%. Without the 17-warehouse group, auto-suspend saves 25.3\%, the joint search 29.4\%, and consolidation adds 5.5\%
+of the tuned total instead of 14.8\%, in 20 groups; without the two largest, 2.8\%. The median-group result does not change.
+Consolidation is a large win for a few organisations and a small one for the fleet.
+
+\textbf{Case study: the 17-warehouse group (exploratory).} Figure~\ref{fig:case} shows six hours of this group's running periods at
+60\,s. Over the 13.3 days of the trace, at least four of its warehouses were running at every moment, and 12.8 on average.
+Run separately, the 17 warehouses accumulate 4,093 warehouse-hours of running time; billed at their sizes this is the
+13,995 credits of the single-knob option (13,991 before the billed one-second resume delays). The search merges them into
+three warehouses (sizes 1, 4 and 8, all at 60\,s), which each run for the whole trace, 960 warehouse-hours in all, and
+cost 4,156 credits (70.3\% less). Merging does not reduce how long compute runs---the merged warehouses never suspend---but
+how many warehouses are billed for the same seconds, exactly as Proposition~\ref{prop:merge} predicts. The merged
+warehouses stay small, no larger than the largest member, and still meet the latency bound. This is the case our
+expectation got backwards: the members are busy, not idle---mean utilisation 42\%, against a median of 4\% across
+groups---and they are worth merging precisely because they are running at the same time.
+
+Could they be one customer's multi-cluster warehouse recorded as many? Not as recorded: Snowset gives each a separate
+warehouse id, and the members have four different sizes (1, 2, 4 and 8), while the clusters of one multi-cluster warehouse
+share a size. The search's merged warehouses also mix sizes. A multi-cluster warehouse is, however, a natural way to
+realise such a merge in practice, and a platform team should weigh it.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/case17.pdf}
+\caption{Case study: six hours of the 17-warehouse group at 60\,s auto-suspend. Upper rows: each original warehouse's
+running periods, coloured by the merged warehouse the search assigns it to. Lower rows: the three merged warehouses, which
+run continuously. Merging cuts the group's two-week bill from 13,995 to 4,156 credits.}\label{fig:case}
+\end{figure}
+
+Two smaller groups show the same pattern at other scales. In a six-warehouse group (sizes 4, 8, 8, 16, 32 and 64) the
+search merges the four smallest into one size-16 warehouse, keeps the 32 and 64 separate, and cuts 10,994 to 8,476 credits
+(22.9\%). In a three-warehouse group (sizes 2, 1, 1; 632,030 queries; at least 98.9\% of each member's running periods
+overlap another's) merging all three into one size-2 warehouse cuts 948 to 638 credits (32.7\%).
+
+\subsection{RQ3: When does consolidation pay?}\label{sec:rq3}
+Among the eleven features (Table~\ref{tab:feat}), the mean overlap of members' running periods correlates most with the
+extra saving (Spearman $+0.51$), as Proposition~\ref{prop:merge} predicts. Group size follows ($+0.32$); a wide spread of
+member sizes is negative ($-0.24$), since merging a small warehouse into a large one bills its queries at the large rate.
+Idle share is weakly \emph{negative} ($-0.20$), utilisation weakly positive ($+0.13$), and resume frequency near zero: the
+idle, lightly used groups we expected to gain are the ones that gain least. Figure~\ref{fig:overlap} shows the pattern.
+
+\begin{table}[t]
+\caption{Spearman correlation of group features with the extra saving from consolidation (134 groups; tie-corrected).
+All features are computed from query history at 60\,s auto-suspend.}\label{tab:feat}
+\centering\small
+\begin{tabular}{lr@{\hspace{14pt}}lr}
+\toprule
+Feature & $\rho$ & Feature & $\rho$ \\
+\midrule
+Overlap, mean      & $+0.51$ & Idle share, min      & $-0.22$ \\
+Overlap, min       & $+0.40$ & Idle share, mean     & $-0.20$ \\
+Group size         & $+0.32$ & Resumes/day, mean    & $-0.06$ \\
+Size spread        & $-0.24$ & Resumes/day, min     & $-0.07$ \\
+Credits (60\,s)    & $+0.20$ & Utilisation, mean    & $+0.13$ \\
+Utilisation, min   & $+0.12$ &                      &         \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/f4_overlap.pdf}
+\caption{Extra saving from consolidation over the best single-knob option vs.\ the mean overlap of members' running periods
+(134 groups). Red: the 21 groups where consolidation pays (a merge, extra saving $>5\%$, at least one credit). Dashed:
+the rule's threshold, 0.617.}\label{fig:overlap}
+\end{figure}
+
+\textbf{Does the billing argument explain the savings? (exploratory)} This closes the argument begun in Figure~\ref{fig:mech}. Proposition~\ref{prop:merge} predicts the saving of a merge from
+coverage alone: the overlap of the members' running periods, valued at the merged warehouse's rate, minus the cost of moving
+members of other sizes to that rate. It ignores queueing, size scaling and resume delays, which the replay includes. For
+each of the 91 merged warehouses in the joint plans we computed both (Figure~\ref{fig:mtest}). For the 79 whose members
+share one size and keep it, the replay realised 1,342 credits of saving against 1,340 predicted (median ratio per merge
+1.003; Spearman 0.99). For the 12 mixed-size merges, the prediction is 12,859 credits against 12,998 realised; the size
+change costs 12,692 credits, about half of the overlap these merges recover. In two mixed-size merges the replay realises
+more than predicted, because the small member's queries run faster on the larger warehouse and shorten its coverage. In
+this fleet, then, consolidation's saving is the overlap the billing rule double-counts, net of the rate change; with eight
+concurrency slots, queueing plays almost no part (with four it does; Section~\ref{sec:rq4}).
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figs/mechanism_test.pdf}
+\caption{Saving of each merged warehouse in the joint plans: realised in the replay vs.\ predicted from overlap and rate
+change alone (Proposition~\ref{prop:merge}). Merges with no saving sit at the lower left. Dashed: equality.}\label{fig:mtest}
+\end{figure}
+
+\textbf{A rule.} A depth-2 decision tree, evaluated by leave-one-out cross-validation, splits twice on the same feature and
+so reduces to one rule---\emph{consolidate when mean overlap exceeds about 0.6} (0.617 when fitted on all groups)---with
+balanced accuracy 0.80, precision 0.64 and recall 0.67 (baseline 0.50). A single threshold, also chosen inside each fold,
+lands lower (0.33) and reaches 0.82, but with precision 0.36: overlap above one third is necessary rather than
+sufficient.
+
+\textbf{Does the rule predict the next week?} A platform team would look at past history, decide, and live with the
+result. We therefore fitted the rule on the first week of the trace and applied it to the second, as pre-registered after
+review (deviation~(8)). The 72 groups whose members all run in both weeks hold 96\% of the consolidation saving. Fitted on
+week 1, the threshold lands lower (overlap $>0.35$); applied to week-1 features, it predicts which groups pay in week 2
+with balanced accuracy 0.88 (precision 0.52, recall 1.00), and the full-trace threshold of 0.617 used the same way reaches
+0.86 (precision 0.75, recall 0.80). Acting on history---each flagged group adopts its week-1 plan unchanged---captures
+6,614 of the 6,637 credits that the best week-2 plans save by consolidation. Week-1 latency targets are missed in week 2
+by 35 groups, but 36 miss them with no change at all: p95 drifts between weeks, and the plans do not add to it.
+
+\textbf{Where the money is, and what the rule misses (exploratory).} The eight groups with the largest consolidation saving hold 96\% of
+it; five of them have a mean overlap of 1.0 and seven are above 0.617. Scored against the 21 groups where consolidation
+pays, the rule flags 15 correctly; those 15 hold 97.5\% of the fleet's consolidation saving. It misses 6, mostly pairs of
+equal-size warehouses with low overlap (median 0.34) that gain a median 8\% but together account for only 0.6\% of the
+saving. It wrongly flags 7, which gain a median of 0\%; their members differ in size by a median factor of four, so
+merging moves small warehouses' queries onto a large warehouse's rate---the second cost noted after
+Proposition~\ref{prop:merge}. Size spread is a cost, not a veto: the largest mixed-size merges are also the largest wins
+(Figure~\ref{fig:mtest}). The rule is therefore a ``look here first'' filter: it finds almost all of the money, and its false
+alarms are mixed-size groups whose overlap does not outweigh the rate change, which a replay before acting rejects.
+
+\subsection{RQ4: How robust are the answers?}\label{sec:rq4}
+\textbf{Sensitivity.} Table~\ref{tab:sens} repeats the full replay under seven one-at-a-time changes, each on all 134
+groups. In every setting auto-suspend saves 22--24\%, the median extra from consolidation is at most 0.1\%, and overlap is
+the strongest feature (Spearman $+0.42$ to $+0.59$). The rule fixed before the sensitivity runs (overlap $>0.55$, from the original analysis) keeps a balanced accuracy of
+0.74--0.86. Concurrency matters most: with four slots instead of eight, merged warehouses queue, consolidation pays in only
+11 groups and adds 5.3\%
+of the tuned total instead of 14.8\%; the six-warehouse group above falls from 22.9\% to 0.8\%, while the 17-warehouse group
+keeps 27.6\%. A larger latency allowance and a zero resume delay change little; a five-second resume delay makes every
+resume costlier and so makes merging pay in more groups (24).
+
+\begin{table}[t]
+\caption{Sensitivity (134 groups each): savings vs.\ defaults; consol.: extra saving as \% of the tuned total; pays: groups
+where consolidation pays; rule: in-sample balanced accuracy of the rule fixed before these runs (mean overlap $>0.55$).}\label{tab:sens}
+\centering\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Setting & suspend & joint & consol. & pays & rule \\
+\midrule
+Main setting$^\dagger$       & 23.7\% & 35.0\% & 14.8\% & 21 & 0.81 \\
+Latency bound 1.1$\times$    & 23.6\% & 34.2\% & 13.9\% & 21 & 0.81 \\
+Latency bound 1.5$\times$    & 23.7\% & 35.5\% & 15.4\% & 20 & 0.86 \\
+4 concurrency slots          & 23.0\% & 27.0\% & 5.3\%  & 11 & 0.74 \\
+Resume delay 0\,s            & 23.7\% & 35.0\% & 14.8\% & 19 & 0.85 \\
+Resume delay 5\,s            & 22.3\% & 34.4\% & 15.5\% & 24 & 0.79 \\
+$\alpha \times 0.8$          & 23.7\% & 35.0\% & 14.8\% & 20 & 0.83 \\
+$\alpha \times 1.2^\ddagger$ & 23.7\% & 35.3\% & 15.2\% & 21 & 0.81 \\
+\bottomrule
+\multicolumn{6}{l}{$^\dagger$ 1.2$\times$ bound, 8 slots, 1\,s resume delay, measured $\alpha$.}\\
+\multicolumn{6}{l}{$^\ddagger$ Gives $\alpha > 1$ for queries over 10\,s; an optimistic bound.}\\
+\end{tabular}
+\end{table}
+
+\textbf{Threshold.} At 3\% and 10\% instead of 5\% (with the same other conditions), 22 and 11 groups pay, and the rule's
+balanced accuracy is 0.82 and 0.84 (precision 0.62 and 0.35).
+
+\textbf{Greedy against exhaustive search.} The joint search is exhaustive for groups of up to four warehouses and greedy beyond. To
+measure what greedy loses, we re-ran all 32 groups of three or four warehouses with the greedy search as well (for pairs
+the two coincide), and ran exhaustive search on the 10 greedy groups of five to eight warehouses (up to Bell(8)~$=4{,}140$
+partitions, with each block's best size and timeout cached). Greedy found the same cost as exhaustive search in all 42
+groups, and every re-run matched the main run exactly. Only the groups of 9, 17 and 18 warehouses remain unchecked
+(Bell(17) $\approx 8\times10^{10}$ partitions), so we cannot rule out a better plan there; their reported
+consolidation savings are lower bounds.
+
+\textbf{Size model.} The size model's held-out error (Section~\ref{sec:calib}) is 12--25\%, against 35--60\% for the simple
+alternatives, and the $\pm20\%$ variants of $\alpha$ leave every conclusion unchanged.
+
+\textbf{Cost of the study.} The replay and search took about two hours in total on a laptop (median 0.3\,s per group; the
+largest group 57 minutes), so a platform team can run the same analysis on its own fleet.
+
+\section{Lessons for Platform Teams}
+The results suggest an order of operations. \emph{First}, set auto-suspend per warehouse from its own history; in our data
+this captured two thirds of the available saving and needs no organisational change. \emph{Second}, for warehouses that
+serve the same workload owner, compute the overlap of their running periods. Figure~\ref{lst:overlap} computes it from
+query history with a 60\,s timeout using only window functions; on the seven Snowset groups we re-ran, it reproduced the
+paper's overlap feature exactly, and it took 4\,s in DuckDB for the 17-warehouse group's 3.7 million queries. On Snowflake
+the input can come from \texttt{QUERY\_HISTORY}---excluding statements that run only in the cloud-services layer---or the
+periods can be read directly from \texttt{WAREHOUSE\_EVENTS\_HISTORY}. \emph{Third}, consider merging only groups whose
+mean overlap exceeds about 0.6 and replay the merge against a latency bound before acting. Size spread is a cost, since
+merged queries run at the largest member's rate, but high overlap can outweigh it---most of the money in our fleet came
+from mixed-size merges---so replay such merges rather than rejecting them. Merged warehouses also queue, and with low
+concurrency limits the benefit shrinks. \emph{Do not} merge warehouses merely
+because they are idle most of the time; if they take turns, a shorter timeout already removes their tails.
 
 \begin{figure}[t]
 \begin{lstlisting}
-WITH iv AS (SELECT team, s, e + :a AS e FROM queries),
-ord AS (SELECT team, s, e, MAX(e) OVER (PARTITION BY team
-          ORDER BY s, e ROWS BETWEEN UNBOUNDED PRECEDING
-          AND CURRENT ROW) AS cm FROM iv),
-isl AS (SELECT team, s, e, CASE WHEN s <= LAG(cm) OVER (PARTITION
-          BY team ORDER BY s, e) THEN 0 ELSE 1 END AS new FROM ord),
-grp AS (SELECT team, s, e, SUM(new) OVER (PARTITION BY team ORDER
-          BY s, e ROWS UNBOUNDED PRECEDING) AS k FROM isl),
-cover AS (SELECT team, MIN(s) s, MAX(e) e FROM grp GROUP BY team, k),
-ev AS (SELECT t, SUM(d) d FROM (SELECT s t, 1 d FROM cover UNION ALL
-          SELECT e, -1 FROM cover) x GROUP BY t),
-cnt AS (SELECT t, SUM(d) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING)
-          n, LEAD(t) OVER (ORDER BY t) t2 FROM ev),
-w AS (SELECT t, CASE WHEN n > 0 THEN (t2 - t) / n ELSE 0 END x
-          FROM cnt),
-g AS (SELECT t, SUM(x) OVER (ORDER BY t ROWS UNBOUNDED PRECEDING)
-          - x AS g FROM w)
-SELECT c.team, SUM(ge.g - gs.g) AS charge_s FROM cover c
-  JOIN g gs ON gs.t = c.s JOIN g ge ON ge.t = c.e GROUP BY c.team;
+WITH tail AS (SELECT wh, s, e + 60 AS e FROM q),
+reach AS (SELECT wh, s, e, MAX(e) OVER
+    (PARTITION BY wh ORDER BY s, e ROWS BETWEEN
+     UNBOUNDED PRECEDING AND CURRENT ROW) AS hi FROM tail),
+gap AS (SELECT wh, s, e, CASE WHEN s > LAG(hi) OVER
+    (PARTITION BY wh ORDER BY s, e) THEN 1 ELSE 0
+    END AS brk FROM reach),
+run_id AS (SELECT wh, s, e, SUM(brk) OVER (PARTITION
+    BY wh ORDER BY s, e ROWS UNBOUNDED PRECEDING) AS r
+    FROM gap),
+period AS (SELECT wh, r, MIN(s) AS a, MAX(e) AS b
+    FROM run_id GROUP BY wh, r),
+shared AS (SELECT p.wh, p.r, MAX(CASE WHEN o.wh IS NULL
+    THEN 0 ELSE 1 END) AS h FROM period p LEFT JOIN
+    period o ON o.wh <> p.wh AND o.a <= p.b AND o.b >= p.a
+    GROUP BY p.wh, p.r)
+SELECT AVG(ov) AS mean_overlap FROM
+  (SELECT wh, AVG(h) AS ov FROM shared GROUP BY wh) per_wh;
 \end{lstlisting}
-\caption{Coverage-Shapley chargeback in SQL (valid for \autos{} $\ge$ 60\,s). Input: \texttt{queries(team, s, e)} for one
-warehouse and billing period; output sums to the billed seconds.}
-\label{lst:sql}
+\caption{Mean overlap of a candidate group's running periods at 60\,s auto-suspend. Input: \texttt{q(wh, s, e)}, the
+execution intervals of the group's queries. Consolidate when the result exceeds about 0.6.}\label{lst:overlap}
 \end{figure}
 
-\textbf{Correctness and cost.} The engine is under 200 lines of Python plus tests. On 1,600 random instance--setting pairs
-with $a \ge 60$\,s the sweep matched brute-force Shapley to within $3\times10^{-13}$\,s and recovered the bill exactly; on 300
-further instances no coalition was charged above its standalone cost. On a synthetic month with one million queries and ten
-teams, the Python sweep takes 0.2--1.2\,s depending on the machine and all five rules, including $n$ leave-one-out coalition costs for R4, 6.7--7.3\,s
-on one core. The full Redset study (94 instances, four settings, three months) ran on a laptop.
+\section{Discussion}
+\textbf{Why the intuition fails.} The case for consolidation is usually made in terms of idle time: many warehouses each
+pay for their own idle tails, so put them together and pay once. Under per-second billing with an idle timeout that is
+only half right. The tails are paid once only if they coincide; if the warehouses take turns, the merged warehouse pays
+for each member's tail in turn, exactly as before. What the billing rule actually charges twice is concurrent running
+time, so the signal is concurrency, and idleness points the wrong way: idle warehouses rarely run at the same time.
+Shortening the timeout removes most of the idle time directly, without any change to who shares what, which is why it
+dominates.
 
-\textbf{Reconciliation.} The modelled bill $B$ and the metered invoice $I$ differ for reasons outside the model: cloud-services
-credits, statements that run without the warehouse, and the platform's suspend lag. The engine therefore first checks that
-the modelled running periods match the platform's resume and suspend events, and only then scales every charge by $I/B$.
-For a given invoice, scaling by a constant preserves P1 and P2 relative to scaled standalone costs; P3 holds for the model
-charges, and for scaled charges only while $I/B$ stays fixed.
+\textbf{What this means for other platforms.} The argument depends only on the shape of the contract: a resource billed by
+the second while it runs, kept up by a timeout after the last request. Databricks SQL warehouses~\cite{dbx-warehouse} and
+the minimum-hold periods of BigQuery autoscaling~\cite{bq-autoscale} have that shape; Redshift Serverless bills per second
+with a minimum but no idle tail~\cite{rs-serverless}, so there the overlap term is all there is to gain. The numbers in
+this paper are specific to Snowset and to our replay; the direction of the effect, and the overlap test, should carry over.
 
-\section{Methodology}\label{sec:method}
-\textbf{Pre-registration.} The inclusion rule, interval definition, settings, rules and metrics were written and timestamped
-before any result was computed; later additions (implementation choices, the definition of ``doubling'') were added as dated
-addenda before the corresponding runs. Two deviations are disclosed.
-(1)~The first full run summed raw execution seconds for R1, which double-counts concurrent queries and produced impossible
-negative ``unassigned'' shares. We fixed R1 to split concurrent seconds, re-ran everything, kept the first output, and report
-only the re-run; R3--R5, standalone costs and coalition costs are unaffected by the fix.
-(2)~An independent re-computation of every number in this paper, done after all runs, found that the runner cut calendar
-months in the analyst's local time zone. Redset starts at midnight UTC on March 1, so its first five hours formed a
-``February'' stub month (56 instance-months per setting, median 5.2 billed hours against about 600 for full months). We drop
-the stub, as the frozen definition (calendar months, March--May) intended, and report results with it kept in
-Section~\ref{sec:sens}. Month boundaries remain those of US Eastern time (4--5 hours from UTC), and the first five hours of
-data are dropped rather than moved into March. The fleet headlines move by less than three points; month-to-month stability
-and the tail-intensity analysis move more, and we report both ways. Results marked \emph{exploratory} were not pre-registered.
+\textbf{What a vendor could do.} The largest saving we found came from a customer who ran many busy warehouses side by
+side. Such a customer is paying for the same seconds many times, and the platform has every input needed to notice:
+running periods per warehouse are already recorded in the events history. Surfacing the overlap of a customer's
+warehouses, alongside the existing advice on auto-suspend, would point platform teams at the few merges worth making.
+Multi-cluster warehouses, which add clusters under load and remove them when idle, already implement a form of this merge
+for workloads that share a size.
 
-\textbf{Redset.} Redset~\cite{redset} releases three months (March--May 2024) of query metadata for 200 provisioned and 200
-serverless Redshift instances, with user, arrival, queue, compile and execution times. A team is a user within an instance.
-An instance is included if at least two teams each account for at least 1\% of its execution time over at least seven days:
-95 of 400 instances qualify (233 have a single user), holding 247.8 million queries; 94 have at least one month with two
-active teams. Teams below 1\% are pooled into ``other'', which is charged but not reported. A query occupies
-$[\text{arrival} + \text{queue},\ \text{arrival} + \text{queue} + \text{compile} + \text{execution}]$; result-cache hits with
-no execution are dropped. Each instance is replayed as a counterfactual per-second warehouse of fixed size under \autos{} 60,
-300 and 600\,s (and 30\,s, reported separately), per calendar month: 264 instance-months and 1,414 team-months per setting.
-Redshift's own billing differs (provisioned clusters bill by node-hour); we use its workloads, not its prices.
+\section{Threats to Validity}
+\textbf{External validity.} Snowset is from 2018 and ran on older hardware; workloads and engines have changed. Our size
+model was measured on 2026 Generation~2 warehouses on 18 statements, none longer than 60\,s, so scaling for longer queries
+is extrapolated. Groups are a database-level proxy for one customer, because Snowset has no customer id; some groups may
+span customers, and some customers' related warehouses touch several databases and are excluded. The fleet is one
+vendor's; the billing argument (Proposition~\ref{prop:merge}) carries over to services with the same contract shape, the
+numbers need not.
 
-\textbf{Metrics.} For P2 we check every coalition when a month has at most ten teams, and otherwise all singletons, pairs
-and leave-one-out complements: 25,856 coalitions per setting. For P3 we take each instance-month and each team in turn,
-double that team (a copy of each query starting when the original ends), and record whether any other team's charge rises:
-7,096 bystander cases per setting. Doubling in place adds at most as much bill as execution time, so R2 passes this test by
-construction. A second, pre-registered before it was run, exercises R2: each team in turn adds ten one-second queries at
-random times in the month, the kind of growth that adds tails rather than execution (7,096 cases per setting). For responsiveness we measure how much each team's share
-of the bill moves when \autos{} changes from 60 to 600\,s; for stability, the month-to-month variation of charges for teams
-whose own usage varied by less than 10\%.
+\textbf{Internal validity.} Snowset records no suspend settings, so the as-is timeout is assumed; we report 60, 300 and
+600\,s. Arrivals are observed execution starts, so original queueing is folded in. Concurrency is modelled as eight
+first-come first-served slots, not Snowflake's resource-based limit; four slots change the size of the consolidation result
+but not its pattern. Result-cache and local-cache effects are not modelled; merging could warm or cool caches. The timeout
+grid stops at 60\,s.
 
-\textbf{Snowflake run.} This run is separate from any other study's; it was designed and run for this paper only. On a dedicated Gen2 X-Small warehouse with query acceleration disabled, four tagged teams ran seeded
-schedules for 60 minutes at \autos{} 60\,s and 60 minutes at 300\,s: a dashboard team (bursts of five queries every 3--5
-minutes), a batch team (one join every 15 minutes), an ad hoc team (Poisson, mean gap six minutes) and a trickle team (a
-point query every two minutes); result cache off; 236 statements, all successful. Ground truth comes from Snowflake's
-\texttt{QUERY\_HISTORY}, \texttt{QUERY\_ATTRIBUTION\_HISTORY}, \texttt{WAREHOUSE\_EVENTS\_HISTORY} and
-\texttt{WAREHOUSE\_METERING\_HISTORY}. The 300\,s phase was disrupted: the client machine slept, and its statements spread
-over about 2.5 hours instead of one. The validation below uses what actually ran and is unaffected; the planned timing was
-not.
-
-\section{Results}
-\subsection{Does the billing model match Snowflake?}\label{sec:e1}
-Table~\ref{tab:e1} compares the model's running periods, derived from \texttt{QUERY\_HISTORY} execution intervals, with
-the warehouse's actual resume and suspend events. The model reproduces every running period and 98.9\% (60\,s) and 99.5\%
-(300\,s) of the running time between resume and suspend events. The warehouse suspended a median 60.1\,s and 300.3\,s after its last query, within 0.4\,s of
-the setting; we did not observe the up-to-30-second lag the documentation allows. Assumption A2 therefore held to within a
-fraction of a second on this account. The metered compute was 0.953 and 1.426 credits for the two phases, or
-1.34--1.35 credits per hour of running time.
-
-\begin{table}[t]
-\caption{Modelled running periods vs.\ Snowflake's resume and suspend events (live four-team run).}\label{tab:e1}
-\small
-\begin{tabular}{lrrrrr}
-\toprule
-\autos & periods (m/a) & model s & actual s & ratio & tail \\
-\midrule
-60\,s  & 30 / 30 & 2{,}512 & 2{,}541 & 0.989 & 60.1\,s \\
-300\,s & 3 / 3   & 3{,}799 & 3{,}820 & 0.995 & 300.3\,s \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{How much of the bill is unassigned?}\label{sec:e2}
-Figure~\ref{fig:e2} shows, per Redset instance, the share of the bill that execution-time attribution leaves unassigned.
-The median is 31.4\% at 60\,s, 50.2\% at 300\,s and 56.3\% at 600\,s; the interquartile range at 600\,s is 17--78\%.
-The 19 serverless instances leave more unassigned (median 73.3\% at 600\,s) than the 75 provisioned ones (47.1\%). In the live run, Snowflake's own attribution assigned 0.118 of 0.953 metered credits at 60\,s and 0.104 of
-1.426 at 300\,s: 87.7\% and 92.7\% unassigned. Snowflake attributed six (60\,s) to eleven (300\,s) times more than pure
-execution seconds on these short queries---native attribution evidently counts more than execution---so the Redset figures
-are best read as what execution-time accounting leaves over. On our one live run, the platform's own attribution assigned
-more, yet still left most of the bill unassigned.
-Either way, the remainder is the larger part of the bill for most instances, and the rule that splits it decides most of
-what each team pays.
-
-\begin{figure}[t]
-\includegraphics[width=\columnwidth]{figs/e2_unassigned.pdf}
-\caption{Share of each Redset instance's bill (94 instances, three months) left unassigned by execution-time attribution.}
-\label{fig:e2}
-\end{figure}
-
-\subsection{Are the common rules fair?}\label{sec:e3}
-\textbf{Standalone bound (P2).} Figure~\ref{fig:e3} and Table~\ref{tab:e3} report how often each rule charges a team, or a
-group of teams, more than its own warehouse would have cost. Proportional splitting does so for 12--17\% of team-months and
-8--11\% of coalitions; equal splitting for 33--44\% of team-months; leave-one-out marginal cost for 3--4\%. The Shapley
-rule never does: zero of 1,414 team-months and zero of 25,856 coalitions at each setting, as Theorem~\ref{thm:coverage}
-predicts. These rates include the pooled ``other'' team; for the 1,187 named team-months alone they are 15--18\% for
-proportional, 29--40\% for equal and 3--4\% for marginal splitting. The rules also disagree about who pays: the share of the
-fleet's bill that moves between teams relative to Shapley has a median of 16--27\% for proportional, 37--42\% for equal and
-6--18\% for marginal splitting. The overcharges are not marginal. A team that proportional splitting overcharges pays a median 33--44\% more than
-its standalone cost, and one in ten pays about three times as much (exploratory); a team that equal splitting overcharges
-pays a median 2.6--3.2 times its standalone cost. Marginal splitting's overcharges are small (median 2--3\%), but it fails the bystander test below.
-
-The live run shows the same failures with real metering. At 60\,s proportional splitting charged the dashboard team 0.543
-credits against a standalone cost of 0.383, and the batch team 0.143 against 0.094; at 300\,s marginal splitting charged the
-ad hoc team 0.790 against 0.768. Shapley charged every team less than its standalone cost in both phases (Table~\ref{tab:live}). The pre-registered criterion for a primary claim---it must hold on Redset and match in direction on the Snowflake
-run---is met for both: the common rules exceed standalone costs in both, and Shapley stays within them in both.
-
-\begin{table}[t]
-\caption{Live run: per-team charges (credits), scaled to the metered invoice. Alone: standalone cost; bold: above it.}\label{tab:live}
-\small
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{llrrrrr}
-\toprule
-\autos & Team & alone & R2 & R3 & R4 & R5 \\
-\midrule
-60\,s  & dashboard & 0.383 & \textbf{0.543} & 0.238 & 0.208 & 0.252 \\
-       & trickle   & 0.686 & 0.148 & 0.238 & 0.559 & 0.514 \\
-       & batch     & 0.094 & \textbf{0.143} & \textbf{0.238} & 0.054 & 0.058 \\
-       & ad hoc    & 0.189 & 0.119 & \textbf{0.238} & 0.133 & 0.130 \\
-\midrule
-300\,s & dashboard & 1.272 & 0.833 & 0.357 & 0.354 & 0.505 \\
-       & trickle   & 1.262 & 0.102 & 0.357 & 0.282 & 0.495 \\
-       & batch     & 0.453 & 0.374 & 0.357 & 0.000 & 0.123 \\
-       & ad hoc    & 0.768 & 0.117 & 0.357 & \textbf{0.790} & 0.303 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[t]
-\includegraphics[width=\columnwidth]{figs/e3_overcharge.pdf}
-\caption{Team-months charged above their standalone cost, by rule and auto-suspend setting (1,414 team-months).}
-\label{fig:e3}
-\end{figure}
-
-\begin{table}[t]
-\caption{Standalone-bound violations: team-months / coalitions charged above standalone cost.}\label{tab:e3}
-\small
-\begin{tabular}{lccc}
-\toprule
-Rule & 60\,s & 300\,s & 600\,s \\
-\midrule
-R2 proportional & 16.6\% / 10.7\% & 14.7\% / 8.7\% & 12.4\% / 7.6\% \\
-R3 equal split  & 44.1\% / 20.8\% & 36.6\% / 15.0\% & 33.4\% / 12.8\% \\
-R4 marginal     & 4.3\% / 2.1\%   & 3.5\% / 1.4\%   & 3.0\% / 1.6\% \\
-R5 Shapley      & 0 / 0           & 0 / 0           & 0 / 0 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\textbf{Bystander monotonicity (P3).} Figure~\ref{fig:e4} shows both growth tests. When one team doubles its work,
-marginal-cost splitting raised another team's charge in 42.3\% of 7,096 cases at 60\,s and 31.1\% at 600\,s (median rise
-0.8\% and 0.5\%); proportional splitting cannot fail this test. When one team instead adds ten isolated one-second queries,
-proportional splitting raised another team's charge in 67.9\% of cases at 60\,s and 40.6\% at 600\,s, and marginal splitting
-in 50.2\% and 26.2\%. The rises are small (medians of 0.01--0.2\% of the bystander's charge), because ten queries in a month
-is small growth; what matters is the direction---a team is billed more because someone else changed their behaviour.
-Shapley never raised a bystander's charge in either test, 14,192 cases per setting in all, matching
-Proposition~\ref{prop:bystander} and the expectation stated before the runs.
-
-\begin{figure}[t]
-\includegraphics[width=\columnwidth]{figs/e4_bystander.pdf}
-\caption{Share of cases in which another team's charge rises when one team grows: doubling its work in place (left) or
-adding ten isolated one-second queries (right); 7,096 cases per test and setting.}
-\label{fig:e4}
-\end{figure}
-
-\subsection{Who pays more under a fair rule?}\label{sec:who}
-\textbf{Responsiveness.} Proportional splitting is, by construction, blind to who keeps the warehouse up: when the setting
-changes from 60 to 600\,s, a team's share of the bill moves by a median 0.0 percentage points. The Shapley share moves by a
-median 2.3 points (90th percentile 13.1) toward the teams whose activity or tails keep the warehouse running; marginal shares
-move erratically (median 1.5, 90th percentile 22.4).
-
-\textbf{Tail intensity} (exploratory). Figure~\ref{fig:who} orders teams by the ratio of their standalone cost to their
-execution time, a measure of how much idle tail each second of work brings with it. Teams in the lowest decile by rank (ratio below
-1.3--1.9, mostly long-running work) pay a median 7.5 (60\,s), 12.5 (300\,s) and 16.3 (600\,s) percentage points less of the
-bill under Shapley than under proportional splitting; teams in the highest decile (ratio above 12--39: short, scattered
-queries such as dashboards and probes) pay 6.8, 10.9 and 8.4 points more. With the stub months kept, the lowest decile
-at 600\,s pays 19.8 points less; the direction holds in every setting. This is the mechanism behind proportional overcharges: a team with long
-queries but few resumes pays for idle tails that other teams cause. For a platform team, it also predicts who will object
-to a switch, and why.
-
-\begin{figure}[t]
-\includegraphics[width=\columnwidth]{figs/who_pays.pdf}
-\caption{Shapley share minus proportional share by decile of tail intensity (median and interquartile band; 1,187 named
-team-months per setting). Exploratory.}
-\label{fig:who}
-\end{figure}
-
-\textbf{How far the rules move each team.} Figure~\ref{fig:gap} shows, for every named team-month, how many percentage
-points of the bill each rule moves away from the Shapley share. At 600\,s the median team moves 4.7 points under
-proportional, 9.2 under equal and 3.6 under marginal splitting, and 32\%, 46\% and 28\% of team-months move by more than
-ten points. These are not rounding differences: a tenth of the teams see a fifth or more of the bill change hands.
-
-\begin{figure}[t]
-\includegraphics[width=\columnwidth]{figs/share_gap.pdf}
-\caption{Distribution, over 1,187 named team-months at 600\,s, of the absolute difference between each rule's share of the
-bill and the Shapley share. Exploratory.}
-\label{fig:gap}
-\end{figure}
-
-\textbf{Stability.} For the 117 teams whose own monthly usage varied by less than 10\%, the coefficient of variation of the
-monthly charge is 3.8--4.5\% under Shapley, 5.6--5.9\% under proportional splitting and 9.0--26.6\% under marginal splitting.
-Of these teams, 115 have all three months. On this data the fair rule is
-also the steadiest, but the margin is small and not robust: with the stub month kept, only 29 teams qualify and Shapley and
-proportional are indistinguishable (4.3--5.0\% against 4.1--6.1\%). Stable usage here means a coefficient of variation of
-monthly execution seconds below 10\%.
-
-\subsection{A case study}\label{sec:case}
-Table~\ref{tab:case} shows one Redset instance, chosen as the one with the largest proportional overcharge among instances
-with four to six named teams; we show it because the pattern is stable across its three months, not because it is typical.
-Team~1 runs only 0.5\% of the execution time, but its queries are spread so evenly that it alone would keep the warehouse
-up for the entire month: its standalone cost equals the whole bill. Team~2 does most of the work in a few hundred hours.
-Proportional splitting follows execution and charges team~2 81\% of the bill, 4.2 times what its own warehouse would cost;
-team~1 pays 2.5\%. Marginal splitting goes to the other extreme: removing any other team saves nothing, so every
-marginal is zero except team~1's, and team~1 pays the whole bill. Shapley charges team~1 71\% for the tails only it causes
-and splits the shared hours, leaving team~2 at 8\%, below its standalone cost; every other team is also below its own.
-The same ordering holds in April and May (team~2 under proportional: 3.9 and 3.3 times its standalone cost) and at
-60\,s (2.8--3.4 times). A platform team that sees this table knows what to do next: the expensive behaviour is team~1's
-keep-alive pattern, not team~2's heavy queries.
-
-\begin{table}[t]
-\caption{Case study: Redset instance provisioned/106, March 2024, \autos{} 600\,s. Execution and charges as \% of the
-743-hour bill; alone = standalone cost in hours. Bold: above standalone cost.}\label{tab:case}
-\small
-\setlength{\tabcolsep}{3.5pt}
-\begin{tabular}{lrrrrrr}
-\toprule
-Team & exec. & alone & R2 & R3 & R4 & R5 \\
-\midrule
-1       & 0.5 & 743\,h & 2.5  & 20.0 & 100.0 & 70.9 \\
-2       & 17.5 & 143\,h & \textbf{81.0} & \textbf{20.0} & 0.0 & 8.0 \\
-3       & 2.2 & 140\,h & 10.1 & \textbf{20.0} & 0.0 & 8.2 \\
-0       & 1.2 & 208\,h & 5.5  & 20.0 & 0.0 & 12.3 \\
-other   & 0.2 & 14\,h  & 0.8  & \textbf{20.0} & 0.0 & 0.6 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Below the minimum and sensitivity}\label{sec:sens}
-At \autos{} 30\,s the minimum can bind and R5 is sampled. It violated the standalone bound in 1 of 25,856 coalition checks
-and for no team-month, against 17.5\% of team-months for proportional and 45.8\% for equal splitting; the median unassigned
-share is 27.5\%. Proposition~\ref{prop:below} shows the core guarantee does not carry over; in practice the gap was
-negligible on this fleet.
-
-How accurate is the sampled path? On 300 random instances with four to eight teams, $a \in \{0, 30\}$\,s and short queries
-over an hour, so that the minimum binds often, we computed the exact Shapley value by brute force (exploratory;
-Table~\ref{tab:sampled}). With 2,000 sampled orders the largest per-team error was a median 0.07\% of the bill (95th
-percentile 0.27\%); quadrupling the orders roughly halves it, as sampling theory predicts. Neither the exact nor the sampled
-values violated the standalone bound in any of 30,472 coalition checks. Simply applying the sweep, rescaled to the bill,
-is not a usable shortcut: its error was a median 5\% of the bill, and it violated the standalone bound in 246 of the 300
-instances.
-
-\begin{table}[t]
-\caption{Sampled Shapley below the minimum vs.\ exact (300 random instances): largest per-team error, \% of the bill.}\label{tab:sampled}
-\small
-\begin{tabular}{lrrr}
-\toprule
-Method & median & 95th pct. & max \\
-\midrule
-100 orders   & 0.33 & 1.27 & 2.75 \\
-500 orders   & 0.14 & 0.55 & 0.85 \\
-2,000 orders & 0.07 & 0.27 & 0.60 \\
-5,000 orders & 0.05 & 0.18 & 0.41 \\
-Sweep, rescaled & 5.01 & 17.68 & 28.41 \\
-\bottomrule
-\end{tabular}
-\end{table}
- Keeping the five-hour stub months (320 instance-months, 1,653 team-months, 29,262 coalitions,
-7,938 bystander cases per setting) changes the unassigned medians by at most 0.1 points, the overcharge rates by at most
-1.1, the doubling-test rates for marginal splitting to 40.0\% and 28.4\%, and the isolated-query rates to 64.3\% and 37.3\%
-(proportional) and 47.8\% and 24.4\% (marginal); Shapley still has zero violations of any kind.
-
-\textbf{Without compile time.} The frozen definitions list one more sensitivity: query intervals without compile time.
-It was not run until review found it missing; it was then added to the plan before it ran (Addendum~6). Removing
-compile time raises the unassigned median to 47\%, 61\% and 66\% at 60, 300 and 600\,s, because compile time leaves the
-attributed time but not the bill. The overcharge rates move by at most 2.7 points (proportional 14--18\%, equal
-34--47\%, marginal 3--5\% of team-months), and Shapley again has zero violations in 24,692 coalition checks per setting.
-
-\textbf{What if teams would run faster alone?} Assumption A1 keeps every query's timing when other teams are removed. With
-less contention a team alone might run faster, which lowers its standalone cost. A pre-registered run (Addendum~5) shortened
-every query of each named team by 10, 20 and 30\% when computing its standalone cost, while keeping the charges computed at
-observed timing. Our stated expectation, that Shapley would stay at or near zero violations at 10\%, was wrong. At 10\%,
-Shapley charged 8.5\% of named team-months above the shortened standalone cost at 60\,s and 3.1\% at 600\,s, by a median of
-2.1\% and 0.4\% (90th percentile 8.1\% and 3.6\%); at 30\%, 14.4\% and 4.6\%. The violators are mostly teams that already
-pay exactly their standalone cost---about two thirds had less than 1\% slack at observed timing---because they run almost
-alone. For those teams, there is little contention to remove, so a uniform speed-up overstates the effect. The common rules
-do worse under the same test. At 10\%, proportional splitting exceeds the shortened standalone cost for 21.1\% (60\,s) and
-15.4\% (600\,s) of team-months, by a median 31\% and 42\%; equal splitting for 40.4\% and 29.1\%, by a median 164\% and
-121\%; and marginal splitting for 13.9\% and 8.8\%, by a median 2.5\% and 0.6\%. The standalone guarantee is therefore exact under A1 and approximate beyond it, and Shapley's violations are the
-fewest or smallest at every speed-up tested.
-
-\section{Deployment Lessons}\label{sec:lessons}
-\textbf{Reconcile before you allocate.} The engine first reproduces the warehouse's running periods from query history and
-compares them with the platform's resume and suspend events; only then does it split the metered invoice. A mismatch signals
-untagged work on the warehouse---an administrator's session, a scheduled task, a BI tool's keep-alive---which should be found
-before any team is charged.
-
-\textbf{Labels belong to the platform.} Chargeback is only as good as the team label. Session-level query tags were complete
-in our run. Proposition~\ref{prop:labels} adds a reason beyond hygiene: under Shapley, two teams can lower their joint
-charge by sharing a label, so labels should come from the service account or role that submits the query, not from a tag a
-team sets itself.
-
-\textbf{Publish the rule, and start with showback.} The coverage interpretation---``each billed second is shared by the
-teams keeping the warehouse up''---is easy to explain to finance and to the teams, which matters as much as the axioms.
-Section~\ref{sec:who} predicts the objection: teams with short, scattered queries will see their share rise. Publishing both
-charges side by side for a quarter before money moves lets teams see why, and the per-segment breakdown answers a dispute
-with the seconds in question.
-
-\textbf{Use the sampled path below 60\,s.} Below 60\,s the minimum binds and the exact sweep no longer applies; sampling
-with 2,000 orders was within the standalone bound in all but one of 25,856 fleet checks and within 0.3\% of the exact value
-in 95\% of random instances (Table~\ref{tab:sampled}). Use a fixed seed so that a month's charges can be reproduced.
-
-\textbf{Run it monthly, where the data lives.} The SQL version runs inside the warehouse over the platform's own query
-history in seconds, so the chargeback can be recomputed for every billing period and for every warehouse without moving
-data. Keeping each month's per-segment output makes the charge auditable: any team can see which seconds it paid for and
-with whom it shared them.
-
-\textbf{Expect a few large movers.} Most teams' shares move by a few points when the rule changes, but between a quarter and
-half move by more than ten (Figure~\ref{fig:gap}). Those teams---often a keep-alive or polling pattern, as in Table~\ref{tab:case}---are
-where the conversation with finance and with the team will happen, and where a change in behaviour saves the most.
-
-\textbf{Chargeback changes behaviour.} A rule that charges for tails gives teams a reason to batch scattered queries or move
-them to a smaller warehouse---the behaviour a platform wants. A rule that hides tails in a proportional remainder rewards
-the opposite.
-
-\section{Beyond Snowflake}\label{sec:beyond}
-The game depends only on the billing contract, and the contracts of other services share its parts. Databricks SQL
-warehouses accrue charges while idle until an auto-stop timeout stops them---at least ten minutes for pro and classic
-warehouses, and down to one minute for serverless ones set through the API~\cite{dbx-warehouse}: the same tail structure, so Theorem~\ref{thm:coverage} applies whenever the timeout is at
-least any start-up minimum. Redshift Serverless bills RPU-seconds with a 60-second minimum but does not bill idle
-time~\cite{rs-serverless}; that is our model with $a = 0 < \mu$, the case of Proposition~\ref{prop:below}, so the sampled path
-applies. BigQuery bills autoscaled slots per second with a one-minute minimum and retains scaled capacity for at least 60
-seconds~\cite{bq-autoscale}, which plays the role of $a = \mu = 60$\,s for the on/off part of a shared reservation; sharing
-the bill for how \emph{much} capacity runs, rather than \emph{whether} it runs, is a different game that we leave open.
-
-\section{Limitations}
-Redset workloads are replayed under per-second billing at a fixed size; we use their timing, not Redshift's prices. Users
-stand in for teams. A1 assumes that removing teams does not change the remaining queries' timing; under heavy contention a
-smaller coalition would run faster. Section~\ref{sec:sens} shows that a uniform 10\% speed-up breaks the standalone bound
-for 3--9\% of team-months, by a median 0.4--2\%; a contention-aware model of standalone runtimes is future work. R1 approximates native attribution by an
-equal split of concurrent seconds, and Snowflake's attribution assigned more than this on short queries. The live run is a
-single warehouse on one trial account over two hours, one phase of which was disrupted; it validates the billing model, not
-the fleet-level percentages. The tail-intensity analysis is exploratory. Multi-cluster warehouses, mid-period resizing and
-cloud-services credits are out of scope.
-
-\section{Future Work}
-Exact or bounded allocations for \autos{} below 60\,s; allocation under multi-cluster scaling, where the number of running
-clusters is itself shared; chargeback that includes cloud-services and serverless features; and a field study of how teams
-respond to a published rule.
+\textbf{Construct validity.} The billing validation used one X-Small warehouse with sequential probes; the merge test
+(Section~\ref{sec:merge}) adds concurrency and merging, but on three pairs, at X-Small, with synthetic statements of the
+trace's durations rather than the original queries, and without size changes. The 60-second minimum cannot bind in any option we evaluate: every option uses \autos{}
+$\ge 60$\,s, so every running period lasts at least 60\,s (Section~\ref{sec:billing}). The replay still applies the
+minimum, and the unit tests check it on 200 random workloads, binding below 60\,s and never at or above
+(\texttt{tests/test\_advisor.py}). The ``pays'' threshold was set after the main run (we report 3\% and 10\%).
+The rule rests on 134 groups with 21 positives, and most of the saving sits in two groups; it should be read as a filter
+for where to look, validated by a replay, not as a classifier to act on alone.
 
 \section{Artifacts}\label{sec:artifacts}
-Code, raw results, the Snowflake run logs and Snowflake's own records for the live run, and the pre-registration with every
-dated addendum and deviation are at \url{https://github.com/khadarvalishaik0520/shared-warehouse-chargeback}. One command
-(\texttt{./run.sh analysis}) regenerates every number, table and figure in this paper from the committed result files in
-minutes, without downloading Redset; re-running the replays needs Redset and takes hours. Unit tests check the sweep
-against brute-force Shapley and the SQL against the sweep.
+The code, the raw result files, the Snowflake calibration logs and Snowflake's own records for the calibration warehouses,
+and the pre-registration with every deviation are public at
+\url{https://github.com/khadarvalishaik0520/warehouse-consolidation-study}. One command regenerates every number, table and figure in this paper in minutes from the result files and two small
+extracts of Snowset shipped with the repository; the replay itself is re-run from the full trace with two further
+commands.
 
 \section{Conclusion}
-The idle part of a shared warehouse's bill is large---a median of a third to more than half under execution-time
-accounting---and the rules used to split it are not fair: proportional, equal and marginal splitting overcharge teams
-relative to their own warehouse or penalise bystanders. Because per-second billing with an idle timeout is a coverage game
-whenever the timeout is at least the resume minimum, the Shapley chargeback is both principled and cheap: split each billed
-second among the teams keeping the warehouse up. It fits in one SQL statement and, at observed timing, never exceeded any team's or group's
-standalone cost, never charged a bystander for someone else's growth, and reconciles to the invoice.
+For a fleet of cloud warehouses, the first and largest saving is the auto-suspend timeout. Resizing rarely helps under a
+latency bound. Consolidation is not a general remedy: it adds nothing for the median group, and merging everything is often
+worse than doing nothing. It pays---in one group by more than two thirds of the tuned bill---when warehouses run at the same
+time, because the billing rule charges every running warehouse for the same second; query history is enough to find those
+groups.
 
-\begin{acks}
-AI-generated content: Claude (Anthropic) was used to draft and edit the text (all sections), to write the engine, analysis
-code and SQL listing (Sections~\ref{sec:impl}--\ref{sec:sens}), and to produce the figures and tables. The authors directed the study and the first author ran the
+\section*{Acknowledgment}
+AI-generated content: Claude (Anthropic) was used to draft and edit the text of all sections, to write the replay, search
+and analysis code behind Sections~IV--VI and the SQL in Figure~\ref{lst:overlap}, and to produce all figures and tables. The authors directed the study and the first author ran the
 experiments; every reported number was re-computed from the result files, and the authors take full responsibility for
 the content.
-\end{acks}
 
-\bibliographystyle{ACM-Reference-Format}
+\bibliographystyle{IEEEtran}
 \bibliography{refs}
 \end{document}

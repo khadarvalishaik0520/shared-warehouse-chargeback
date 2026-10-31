@@ -26,6 +26,15 @@ def run(con, sql):
 def batch_queries():
     return list(BATCH)
 
+LADDER = [   # heavier statements so F2 covers longer exec-time classes (TPCH10)
+ ("probe_point",  "select count(*) from lineitem where l_shipdate = date '2024-03-15'"),
+ ("cd_parts",     "select count(distinct l_partkey, l_suppkey) from lineitem"),
+ ("top_cust",     "select o_custkey, sum(l_extendedprice*(1-l_discount)) r from lineitem join orders on l_orderkey=o_orderkey group by 1 order by 2 desc limit 10"),
+ ("win_rank",     "select count(*) from (select l_suppkey, rank() over (partition by l_suppkey order by l_extendedprice desc) rk from lineitem) where rk <= 3"),
+ ("self_join",    "select count(*) from lineitem a join lineitem b on a.l_orderkey=b.l_orderkey and a.l_linenumber<b.l_linenumber"),
+ ("ps_cross",     "select n_name, sum(ps_supplycost*ps_availqty) from partsupp cross join nation group by 1 order by 2 desc limit 5"),
+]
+
 def warehouse_ok(con, wh):
     cur = con.cursor(); cur.execute("show warehouses like '%s'" % wh); r = cur.fetchall()
     if not r: return "MISSING"

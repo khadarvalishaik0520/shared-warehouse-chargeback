@@ -1,8 +1,9 @@
+data/snowset/
+data/snowset_iv/
 __pycache__/
 *.pyc
-data/redset/
-data/redset_iv/*.parquet
 paper/*.aux
 paper/*.log
-paper/*.out
+paper/*.bbl
 paper/*.blg
+paper/*.out
